@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 알림줄 작은 아이콘: 노트 (흰색 한 가지 색이어야 해요) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M6,3h10a2,2 0,0 1,2 2v6.2a5.5,5.5 0,0 0,-6.8 8.8H6a2,2 0,0 1,-2 -2V5a2,2 0,0 1,2 -2zM8,7v1.6h7V7zM8,10.4V12h5v-1.6z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M16.5,13a4,4 0,1 1,0 8a4,4 0,1 1,0 -8z" />
+</vector>

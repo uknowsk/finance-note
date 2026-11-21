@@ -1,0 +1,117 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart';
+
+import '../data/repository.dart';
+import '../models/models.dart';
+
+/// 화면 전체가 함께 쓰는 상태: 데이터 + 지금 로그인한 회원.
+class AppState extends ChangeNotifier {
+  AppState(this.repo, {this._myMemberId}) {
+    _subs = [
+      repo.group().listen((v) => _set(() => group = v)),
+      repo.members().listen((v) => _set(() => members = v)),
+      repo.txns().listen((v) => _set(() => txns = [...v]..sort((a, b) => b.date.compareTo(a.date)))),
+      repo.messages().listen((v) => _set(() => messages = [...v]..sort((a, b) => a.createdAt.compareTo(b.createdAt)))),
+      repo.settings().listen((v) => _set(() => settings = v)),
+      // 새 기능이라 서버 보안 규칙을 아직 안 바꿨으면 읽기가 막혀요. 그땐 빈 목록 + 안내.
+      repo.meetings().listen(
+            (v) => _set(() => meetings = [...v]..sort((a, b) => b.date.compareTo(a.date))),
+            onError: (_) => _set(() => rulesOutdated = true),
+          ),
+      repo.notices().listen(
+            (v) => _set(() => notices = [...v]..sort((a, b) => b.createdAt.compareTo(a.createdAt))),
+            onError: (_) => _set(() => rulesOutdated = true),
+          ),
+    ];
+  }
+
+  final LedgerRepository repo;
+  late final List<StreamSubscription> _subs;
+
+  List<Member> members = const [];
+  List<Txn> txns = const [];
+  List<Message> messages = const [];
+  LedgerSettings? settings;
+
+  /// 지금 보고 있는 모임.
+  Group? group;
+
+  /// 모임 기록 (최근이 앞).
+  List<Meeting> meetings = const [];
+
+  /// 공지·투표 (최근이 앞).
+  List<Notice> notices = const [];
+
+  /// 서버 보안 규칙이 옛날 것이라 모임·공지를 못 읽었는지.
+  bool rulesOutdated = false;
+
+  String? _myMemberId;
+
+  bool get ready => settings != null && group != null && members.isNotEmpty;
+
+  Member? get me {
+    for (final m in members) {
+      if (m.id == _myMemberId) return m;
+    }
+    return null;
+  }
+
+  bool get isTreasurer => me?.isTreasurer ?? false;
+
+  /// 회장 회원 id. 아직 안 정했으면 null.
+  String? get presidentId => settings?.presidentId;
+
+  bool isPresidentMember(Member m) => presidentId != null && m.id == presidentId;
+
+  bool get isPresident => me != null && isPresidentMember(me!);
+
+  /// 회비 면제를 정하고 풀 수 있는 사람: 총무만.
+  bool get canManageExempt => isTreasurer;
+
+  /// 모임 기록·공지·투표를 쓰고 고칠 수 있는 사람: 총무와 회장.
+  bool get canManageEvents => isTreasurer || isPresident;
+
+  Member? memberById(String? id) {
+    for (final m in members) {
+      if (m.id == id) return m;
+    }
+    return null;
+  }
+
+  Member? get treasurer {
+    for (final m in members) {
+      if (m.isTreasurer) return m;
+    }
+    return null;
+  }
+
+  /// 체험 모드에서 "누구로 볼지" 바꾸기.
+  void actAs(String memberId) => _set(() => _myMemberId = memberId);
+
+  void _set(VoidCallback f) {
+    f();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    super.dispose();
+  }
+}
+
+class AppScope extends InheritedNotifier<AppState> {
+  const AppScope({super.key, required AppState state, required super.child}) : super(notifier: state);
+
+  static AppState of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<AppScope>()!.notifier!;
+
+  /// 아래에서 올라오는 창은 앱 화면 바깥에 그려져서 상태를 못 찾아요.
+  /// 여는 쪽 상태를 그대로 넘겨줘요.
+  static WidgetBuilder carry(BuildContext from, WidgetBuilder builder) {
+    final state = from.getInheritedWidgetOfExactType<AppScope>()!.notifier!;
+    return (c) => AppScope(state: state, child: Builder(builder: builder));
+  }
+}
