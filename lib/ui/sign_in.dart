@@ -8,6 +8,7 @@ import '../data/firestore_repository.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import 'shell.dart';
+import 'invite.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/group_avatar.dart';
@@ -239,7 +240,14 @@ class GroupPickerPage extends StatelessWidget {
                 onPressed: () async {
                   final gid = await Navigator.push<String>(
                     context,
-                    MaterialPageRoute(builder: (_) => JoinGroupPage(dir: dir, user: user)),
+                    MaterialPageRoute(
+                      builder: (_) => JoinGroupPage(
+                        dir: dir,
+                        uid: user.uid,
+                        email: user.email,
+                        displayName: user.displayName,
+                      ),
+                    ),
                   );
                   if (gid != null) onOpen(gid);
                 },
@@ -477,10 +485,24 @@ class _CreateGroupPageState extends State<CreateGroupPage> {
 // ───────────────────────── 초대코드로 들어가기 ─────────────────────────
 
 class JoinGroupPage extends StatefulWidget {
-  const JoinGroupPage({super.key, required this.dir, required this.user});
+  const JoinGroupPage({
+    super.key,
+    required this.dir,
+    required this.uid,
+    this.email,
+    this.displayName,
+    this.readClipboard = _clipboardText,
+  });
 
   final GroupDirectory dir;
-  final User user;
+  final String uid;
+  final String? email;
+  final String? displayName;
+
+  /// 복사해 둔 글 읽기 (테스트에서 바꿔 끼워요).
+  final Future<String?> Function() readClipboard;
+
+  static Future<String?> _clipboardText() async => (await Clipboard.getData(Clipboard.kTextPlain))?.text;
 
   @override
   State<JoinGroupPage> createState() => _JoinGroupPageState();
@@ -488,7 +510,32 @@ class JoinGroupPage extends StatefulWidget {
 
 class _JoinGroupPageState extends State<JoinGroupPage> {
   final _code = TextEditingController();
-  late final _newName = TextEditingController(text: widget.user.displayName ?? '');
+  late final _newName = TextEditingController(text: widget.displayName ?? '');
+
+  /// 복사해 둔 초대 글에서 코드를 찾아 넣었는지.
+  bool _fromClipboard = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pasteFromClipboard();
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    String? text;
+    try {
+      text = await widget.readClipboard();
+    } catch (_) {
+      return;
+    }
+    final code = extractInviteCode(text ?? '');
+    if (code == null || !mounted || _code.text.isNotEmpty) return;
+    setState(() {
+      _code.text = code;
+      _fromClipboard = true;
+    });
+    _find();
+  }
   Group? _group;
   List<Member> _seats = const [];
 
@@ -539,10 +586,10 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
     try {
       await widget.dir.requestJoin(
         gid: g.id,
-        uid: widget.user.uid,
+        uid: widget.uid,
         memberId: _pick,
         name: _pick == null ? name : null,
-        email: widget.user.email,
+        email: widget.email,
       );
       if (mounted) Navigator.pop(context, g.id);
     } catch (e) {
@@ -565,21 +612,24 @@ class _JoinGroupPageState extends State<JoinGroupPage> {
             child: ListView(padding: const EdgeInsets.all(16), children: [
               Text('총무에게 받은 6자리 코드', style: tt.labelMedium),
               const SizedBox(height: 6),
-              Row(children: [
-                Expanded(
-                  child: TextField(
-                    key: const Key('inviteCode'),
-                    controller: _code,
-                    textCapitalization: TextCapitalization.characters,
-                    maxLength: 6,
-                    style: tt.titleLarge!.copyWith(letterSpacing: 4),
-                    decoration: const InputDecoration(hintText: 'ABC123', counterText: ''),
-                    onSubmitted: (_) => _find(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(onPressed: _busy ? null : _find, child: const Text('찾기')),
-              ]),
+              TextField(
+                key: const Key('inviteCode'),
+                controller: _code,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 6,
+                textAlign: TextAlign.center,
+                style: tt.headlineSmall!.copyWith(letterSpacing: 6),
+                decoration: const InputDecoration(hintText: 'ABC123', counterText: ''),
+                onSubmitted: (_) => _find(),
+              ),
+              if (_fromClipboard) ...[
+                const SizedBox(height: 6),
+                Text('복사해 둔 초대 글에서 코드를 찾아 넣었어요 📋', style: tt.bodySmall!.copyWith(color: AppColors.green)),
+              ],
+              const SizedBox(height: 10),
+              // 버튼은 가로로 꽉 차는 모양이라 Row 안에 넣으면 화면이 안 그려져요. 아래에 따로 둬요.
+              FilledButton(key: const Key('findGroup'), onPressed: _busy ? null : _find, child: const Text('모임 찾기')),
               if (_error != null) ...[
                 const SizedBox(height: 8),
                 Text(_error!, style: tt.bodyMedium!.copyWith(color: AppColors.red)),

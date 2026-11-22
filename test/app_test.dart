@@ -16,6 +16,8 @@ import 'package:chongmu_note/ui/widgets/common.dart';
 import 'package:chongmu_note/data/firestore_repository.dart';
 import 'package:chongmu_note/ui/invite.dart';
 import 'package:chongmu_note/ui/pages/card_import_page.dart';
+import 'package:chongmu_note/ui/sign_in.dart';
+import 'package:chongmu_note/ui/format.dart';
 
 void main() {
   setUpAll(() => initializeDateFormatting('ko_KR'));
@@ -265,7 +267,10 @@ void main() {
     for (final c in ['숙박', '교통', '식사', '경조사']) {
       expect(Categories.expense, contains(c));
     }
-    final st = LedgerSettings.fromMap(const {'incomeCategories': ['후원금'], 'expenseCategories': ['회식']});
+    final st = LedgerSettings.fromMap(const {
+      'incomeCategories': ['후원금'],
+      'expenseCategories': ['회식'],
+    });
     expect(st.categoriesOf(TxnType.income), ['회비', '후원금']);
     expect(st.categoriesOf(TxnType.expense), ['회식']);
     expect(LedgerSettings.fromMap(const {}).categoriesOf(TxnType.expense), Categories.expense);
@@ -296,7 +301,9 @@ void main() {
   });
 
   test('참석률: 모임 종류·연도별로 센다', () {
-    final mem = [for (final n in ['가', '나']) Member(id: n, name: n)];
+    final mem = [
+      for (final n in ['가', '나']) Member(id: n, name: n),
+    ];
     final ms = [
       Meeting(id: '1', date: DateTime(2026, 1), kind: MeetingKind.regular, attendeeIds: const ['가', '나']),
       Meeting(id: '2', date: DateTime(2026, 2), kind: MeetingKind.flash, attendeeIds: const ['가']),
@@ -317,7 +324,11 @@ void main() {
       title: '날짜',
       createdAt: DateTime(2026, 11, 1),
       poll: Poll(options: const ['A', 'B'], multi: true, deadline: DateTime(2026, 11, 5)),
-      votes: const {'p': [0, 1], 'q': [1], 'r': []},
+      votes: const {
+        'p': [0, 1],
+        'q': [1],
+        'r': [],
+      },
     );
     final back = Notice.fromMap('x', n.toMap());
     expect(back.counts, [1, 2]);
@@ -326,11 +337,19 @@ void main() {
     expect(back.isOpen(DateTime(2026, 11, 4)), isTrue);
     expect(back.isOpen(DateTime(2026, 11, 6)), isFalse);
     expect(back.copyWith(closed: true).isOpen(DateTime(2026, 11, 2)), isFalse);
-    final m = Meeting(id: 'm', date: DateTime(2026, 5, 2), kind: MeetingKind.flash, place: '대전', attendeeIds: const ['a']);
+    final m = Meeting(
+      id: 'm',
+      date: DateTime(2026, 5, 2),
+      kind: MeetingKind.flash,
+      place: '대전',
+      attendeeIds: const ['a'],
+    );
     final mb = Meeting.fromMap('m', m.toMap());
     expect((mb.kind, mb.place, mb.region), (MeetingKind.flash, '대전', null));
     expect(mb.attendeeIds, ['a']);
-    final st = LedgerSettings.fromMap(const {'rotation': ['부산', '경상']});
+    final st = LedgerSettings.fromMap(const {
+      'rotation': ['부산', '경상'],
+    });
     expect(st.rotation, ['부산', '경상']);
     // 새 모임은 지역 돌아가기·회비 없이 시작
     expect(LedgerSettings.fromMap(const {}).rotation, isEmpty);
@@ -399,14 +418,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(s.notices.first.choicesOf(me), [0, 2], reason: '여러 개 고르기');
     // 단일 투표 하나 올려서 확인
-    await s.repo.postNotice(Notice(
-      id: '',
-      authorId: 't',
-      authorName: '총무',
-      title: '장소 하나만',
-      createdAt: DateTime.now(),
-      poll: const Poll(options: ['청주', '대전']),
-    ));
+    await s.repo.postNotice(
+      Notice(
+        id: '',
+        authorId: 't',
+        authorName: '총무',
+        title: '장소 하나만',
+        createdAt: DateTime.now(),
+        poll: const Poll(options: ['청주', '대전']),
+      ),
+    );
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
     await tester.tap(find.text('청주'));
@@ -587,7 +608,78 @@ void main() {
     await tester.tap(find.text('카드 문자'));
     await tester.pumpAndSettle();
     expect(find.byType(CardImportPage), findsOneWidget);
+    // 처음엔 꺼져 있어요 → 스위치로 켜기
+    expect(s.settings!.smsEnabled, isFalse);
+    await tester.tap(find.byKey(const Key('smsSwitch')));
+    await tester.pumpAndSettle();
+    expect(s.settings!.smsEnabled, isTrue);
     return s;
+  }
+
+  testWidgets('카드 문자 스위치를 끄면 꺼지고, 홈 알림도 사라진다', (tester) async {
+    final s = await openCardImportAs(tester);
+    expect(find.text('새 카드 결제 3건'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('smsSwitch')));
+    await tester.pumpAndSettle();
+    expect(s.settings!.smsEnabled, isFalse);
+    expect(find.text('새 카드 결제 3건'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('homeSms')), findsNothing);
+  });
+
+  testWidgets('달력에서 고른 날짜의 카드 문자만 읽는다', (tester) async {
+    await openCardImportAs(tester);
+    final now = DateTime.now();
+    final target = DateUtils.dateOnly(now.subtract(const Duration(days: 1, hours: 2)));
+    final demoDays = [
+      now.subtract(const Duration(hours: 3)),
+      now.subtract(const Duration(days: 1, hours: 2)),
+      now.subtract(const Duration(days: 2, hours: 5)),
+    ].map(DateUtils.dateOnly);
+    final expected = demoDays.where((d) => d == target).length;
+
+    await tester.ensureVisible(find.byKey(const Key('pickDates')));
+    await tester.tap(find.byKey(const Key('pickDates')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('모두 지우기'));
+    await tester.pump();
+    if (target.month != now.month) {
+      await tester.tap(find.byTooltip('지난달'));
+      await tester.pump();
+    }
+    await tester.tap(find.byKey(Key('day-${target.month}-${target.day}')));
+    await tester.pump();
+    expect(find.text('1일 골랐어요'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('datesDone')));
+    await tester.pumpAndSettle();
+    expect(find.text('새 카드 결제 $expected건'), findsOneWidget);
+    expect(find.text('${target.month}/${target.day} (${weekday(target)})'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final size in const [Size(320, 640), Size(360, 760), Size(844, 390)]) {
+    testWidgets('카드 문자 화면이 좁거나 가로인 화면에서도 깨지지 않는다 $size', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final s = await openCardImportAs(tester);
+      expect(tester.takeException(), isNull);
+      // 체크 끄고 켜기
+      final before = find.textContaining('장부에 넣기');
+      expect(before, findsOneWidget);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pump();
+      expect(find.textContaining('2건 ·'), findsOneWidget);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pump();
+      expect(find.textContaining('3건 ·'), findsOneWidget);
+      // 날짜 칩 글자가 세로로 쪼개지지 않게: 한 줄 높이
+      final chip = find.byType(InputChip).first;
+      expect(tester.getSize(chip).height, lessThan(60));
+      expect(s.settings!.smsEnabled, isTrue);
+      expect(tester.takeException(), isNull);
+    });
   }
 
   testWidgets('총무가 카드 문자 3건을 분류 확인 후 장부에 넣고, 다시는 안 나온다', (tester) async {
@@ -597,6 +689,7 @@ void main() {
     expect(find.text('숙박'), findsOneWidget);
     final before = s.txns.length;
     await tester.ensureVisible(find.byKey(const Key('smsSave')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('smsSave')));
     await tester.pumpAndSettle();
     expect(s.txns.length, before + 3);
@@ -644,4 +737,41 @@ void main() {
     await openTab(tester, '김민준', '홈');
     expect(find.text('카드 문자'), findsNothing);
   });
+
+  // ───────── 초대코드로 들어가기 ─────────
+
+  test('복사한 초대 글에서 코드를 찾는다', () {
+    final msg = inviteMessage(const Group(id: 'g', name: '등산 모임', inviteCode: 'ABC234'));
+    expect(extractInviteCode(msg), 'ABC234');
+    expect(extractInviteCode('  xyz789 '), 'XYZ789');
+    expect(extractInviteCode('초대코드: Q2W3E4 입니다'), 'Q2W3E4');
+    expect(extractInviteCode('오늘 저녁 7시 모여요'), isNull);
+    expect(extractInviteCode(''), isNull);
+  });
+
+  for (final size in [const Size(390, 844), const Size(320, 640), const Size(844, 390)]) {
+    testWidgets('초대코드 화면에 입력칸이 보이고, 복사한 코드가 자동으로 들어간다 $size', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: JoinGroupPage(
+            dir: GroupDirectory(),
+            uid: 'u1',
+            // 실제 서버 대신: 찾기는 실패해도 화면은 그대로여야 해요.
+            readClipboard: () async => '[총무노트] 초대\n초대코드: ABC234',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('inviteCode')), findsOneWidget);
+      expect(find.byKey(const Key('findGroup')), findsOneWidget);
+      expect(find.text('ABC234'), findsOneWidget);
+      expect(find.textContaining('자동으로'), findsNothing);
+      expect(find.textContaining('코드를 찾아 넣었어요'), findsOneWidget);
+    });
+  }
 }
