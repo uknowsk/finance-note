@@ -826,6 +826,29 @@ void main() {
     });
   }
 
+  testWidgets('후원: 토스 아이디가 없으면 계좌로 토스 송금 화면을 연다', (tester) async {
+    final opened = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      home: SupportPage(
+        info: const SupportInfo(bank: '국민은행', account: '123-45-6789', holder: '개발자'),
+        open: (u) async {
+          opened.add(u);
+          return true;
+        },
+      ),
+    ));
+    expect(find.byKey(const Key('payKakao')), findsNothing);
+    await tester.tap(find.byKey(const Key('amount-2000')));
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('payToss')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('payToss')));
+    await tester.pump();
+    final u = Uri.parse(opened.single);
+    expect((u.scheme, u.host), ('supertoss', 'send'));
+    expect(u.queryParameters, {'amount': '2000', 'bank': '국민은행', 'accountNo': '123456789'});
+  });
+
   testWidgets('후원 받을 곳이 비어 있으면 준비 중 안내만', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: SupportPage(info: SupportInfo())));
     expect(find.textContaining('준비하고 있어요'), findsOneWidget);

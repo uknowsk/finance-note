@@ -33,6 +33,21 @@ class SupportInfo {
   /// 금액까지 들어간 토스 송금 링크
   String tossUrl(int amount) => 'https://toss.me/$tossId/$amount';
 
+  /// 토스 앱 송금 화면 (계좌·금액 채워서). 토스 아이디가 없어도 돼요.
+  String tossAccountUrl(int amount) => Uri(
+        scheme: 'supertoss',
+        host: 'send',
+        queryParameters: {
+          'amount': '$amount',
+          'bank': bank,
+          'accountNo': account.replaceAll(RegExp(r'[^0-9]'), ''),
+        },
+      ).toString();
+
+  /// 토스로 보내기 버튼을 보여줄지 (아이디나 계좌 중 하나만 있어도)
+  bool get canToss => hasToss || hasAccount;
+  String tossLink(int amount) => hasToss ? tossUrl(amount) : tossAccountUrl(amount);
+
   /// 앱에 들어가는 실제 후원 정보 (개발자가 채워요).
   static const app = SupportInfo();
 }
@@ -71,8 +86,9 @@ class _SupportPageState extends State<SupportPage> {
     final ok = await widget.open(url);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(_info.hasAccount ? '$name을 열지 못했어요. 계좌번호 복사로 보내 주세요' : '$name을 열지 못했어요'),
+        content: Text(_info.hasAccount ? '$name을 열지 못했어요. 계좌번호를 복사해 둘게요' : '$name을 열지 못했어요'),
       ));
+      if (_info.hasAccount) await _copyAccount();
     }
   }
 
@@ -123,10 +139,10 @@ class _SupportPageState extends State<SupportPage> {
                       ),
                   ]),
                   const SectionHeader('어떻게 보낼까요?'),
-                  if (_info.hasToss) ...[
+                  if (_info.canToss) ...[
                     FilledButton.icon(
                       key: const Key('payToss'),
-                      onPressed: () => _go(_info.tossUrl(_amount), '토스'),
+                      onPressed: () => _go(_info.tossLink(_amount), '토스'),
                       icon: const Icon(Icons.send_rounded),
                       label: Text('토스로 ${won(_amount)} 보내기'),
                     ),
