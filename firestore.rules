@@ -1,0 +1,111 @@
+rules_version = '2';
+// 총무노트 보안 규칙
+// - 모임마다 따로: 내가 가입한 모임 것만 읽을 수 있어요.
+// - 회원은 모두 읽기 가능, 메시지 쓰기와 투표만 가능
+// - 돈과 관련된 기록과 모임 설정은 그 모임 총무만 쓰기 가능
+// - 모임 기록·공지·투표는 총무와 회장
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+
+    function groupPath(gid) { return /databases/$(db)/documents/groups/$(gid); }
+    function accountPath(gid) { return /databases/$(db)/documents/groups/$(gid)/accounts/$(request.auth.uid); }
+    function account(gid) { return get(accountPath(gid)).data; }
+    function isMember(gid) { return signedIn() && exists(accountPath(gid)); }
+    function isTreasurer(gid) { return isMember(gid) && account(gid).role == 'treasurer'; }
+    // 회장: 그 모임 설정(config/settings)의 presidentId가 내 회원 id
+    function isPresident(gid) {
+      return isMember(gid)
+        && get(/databases/$(db)/documents/groups/$(gid)/config/settings).data.get('presidentId', '') == account(gid).memberId;
+    }
+    function canManageEvents(gid) { return isTreasurer(gid) || isPresident(gid); }
+    // 모임을 막 만든 사람 (같은 묶음 저장 안에서도 확인돼요)
+    function isCreator(gid) {
+      return signedIn() && getAfter(groupPath(gid)).data.createdBy == request.auth.uid;
+    }
+
+    // 내 계정: 내가 들어간·신청한 모임 목록
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // 초대코드 → 모임. 코드를 아는 사람만 찾을 수 있게 목록 보기는 막아요.
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow create: if signedIn()
+        && (isCreator(request.resource.data.groupId) || isTreasurer(request.resource.data.groupId));
+      allow delete: if signedIn() && isTreasurer(resource.data.groupId);
+    }
+
+    match /groups/{gid} {
+      // 초대받은 사람이 가입 전에 모임 이름·사진을 볼 수 있게 (id를 알아야만 열려요)
+      allow get: if signedIn();
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isTreasurer(gid)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && (!('logo' in request.resource.data) || request.resource.data.logo == null
+            || (request.resource.data.logo is string && request.resource.data.logo.size() < 300000));
+
+      match /accounts/{uid} {
+        allow read: if signedIn() && (request.auth.uid == uid || isMember(gid));
+        // 모임 만든 사람이 처음 한 번 자기 총무 계정을 만들 때
+        allow create: if (isCreator(gid) && request.auth.uid == uid && request.resource.data.role == 'treasurer')
+          || isTreasurer(gid);
+        allow update, delete: if isTreasurer(gid);
+      }
+
+      match /members/{memberId} {
+        // 가입 화면에서 이름을 고르려면 로그인만 해도 명단은 보여야 해요.
+        allow read: if signedIn();
+        allow write: if isTreasurer(gid);
+      }
+
+      match /joinRequests/{uid} {
+        allow create, update: if signedIn() && request.auth.uid == uid;
+        allow read: if signedIn() && (request.auth.uid == uid || isTreasurer(gid));
+        allow delete: if signedIn() && (request.auth.uid == uid || isTreasurer(gid));
+      }
+
+      match /config/{doc} {
+        allow read: if isMember(gid);
+        allow write: if isTreasurer(gid);
+      }
+
+      match /transactions/{id} {
+        allow read: if isMember(gid);
+        allow write: if isTreasurer(gid)
+          && (request.resource == null || (request.resource.data.amount is int && request.resource.data.amount >= 0));
+      }
+
+      match /messages/{id} {
+        allow read: if isMember(gid);
+        allow create: if isMember(gid)
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.pinned == false
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 1000;
+        allow delete: if isMember(gid) && (resource.data.authorUid == request.auth.uid || isTreasurer(gid));
+        allow update: if isTreasurer(gid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinned']);
+      }
+
+      // 모임 기록(참석자 포함): 총무·회장만 쓰기
+      match /meetings/{id} {
+        allow read: if isMember(gid);
+        allow write: if canManageEvents(gid);
+      }
+
+      // 공지·투표: 총무·회장이 올리고, 회원은 열린 투표에 '내 표'만 바꿀 수 있어요.
+      match /notices/{id} {
+        allow read: if isMember(gid);
+        allow create, delete: if canManageEvents(gid);
+        allow update: if canManageEvents(gid)
+          || (isMember(gid)
+            && resource.data.closed == false
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes'])
+            && request.resource.data.votes.diff(resource.data.votes).affectedKeys().hasOnly([account(gid).memberId])
+            && request.resource.data.votes[account(gid).memberId] is list
+            && request.resource.data.votes[account(gid).memberId].size() <= 20);
+      }
+    }
+  }
+}

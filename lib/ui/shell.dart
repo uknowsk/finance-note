@@ -1,0 +1,103 @@
+import 'package:flutter/material.dart';
+
+import 'pages/dues_page.dart';
+import 'pages/home_page.dart';
+import 'pages/ledger_page.dart';
+import 'pages/meetings_page.dart';
+import 'pages/notices_page.dart';
+import 'pages/settings_page.dart';
+
+/// 세로 화면: 아래 탭 6개 / 가로·큰 화면: 왼쪽 메뉴.
+class AppShell extends StatefulWidget {
+  const AppShell({super.key, this.onSignOut, this.onSwitchGroup});
+
+  final VoidCallback? onSignOut;
+
+  /// 내 모임 목록으로 (다른 모임 보기).
+  final VoidCallback? onSwitchGroup;
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  var _index = 0;
+
+  static const _tabs = [
+    (Icons.home_outlined, Icons.home_rounded, '홈'),
+    (Icons.receipt_long_outlined, Icons.receipt_long_rounded, '장부'),
+    (Icons.people_outline_rounded, Icons.people_rounded, '회비'),
+    (Icons.celebration_outlined, Icons.celebration_rounded, '모임'),
+    (Icons.campaign_outlined, Icons.campaign_rounded, '소식'),
+    (Icons.settings_outlined, Icons.settings_rounded, '설정'),
+  ];
+
+  Widget _page(int i) => switch (i) {
+        0 => HomePage(
+            onOpenDues: () => setState(() => _index = 2),
+            onOpenMeetings: () => setState(() => _index = 3),
+            onOpenNews: () => setState(() => _index = 4),
+            onSwitchGroup: widget.onSwitchGroup,
+          ),
+        1 => const LedgerPage(),
+        2 => const DuesPage(),
+        3 => const MeetingsPage(),
+        4 => const NewsPage(),
+        _ => SettingsPage(onSignOut: widget.onSignOut, onSwitchGroup: widget.onSwitchGroup),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final body = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOutCubic,
+      transitionBuilder: (child, a) => FadeTransition(
+        opacity: a,
+        child: ScaleTransition(scale: Tween(begin: 0.985, end: 1.0).animate(a), child: child),
+      ),
+      child: KeyedSubtree(key: ValueKey(_index), child: _page(_index)),
+    );
+
+    return LayoutBuilder(builder: (context, c) {
+      final wide = c.maxWidth >= 600;
+      if (wide) {
+        return Scaffold(
+          body: SafeArea(
+            right: false,
+            child: Row(children: [
+              NavigationRail(
+                selectedIndex: _index,
+                onDestinationSelected: (i) => setState(() => _index = i),
+                labelType: NavigationRailLabelType.all,
+                groupAlignment: -0.6,
+                destinations: [
+                  for (final t in _tabs)
+                    NavigationRailDestination(icon: Icon(t.$1), selectedIcon: Icon(t.$2), label: Text(t.$3)),
+                ],
+              ),
+              VerticalDivider(width: 0.5, thickness: 0.5, color: Theme.of(context).dividerColor),
+              Expanded(child: body),
+            ]),
+          ),
+        );
+      }
+      return Scaffold(
+        body: body,
+        bottomNavigationBar: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
+          ),
+          child: NavigationBar(
+            selectedIndex: _index,
+            onDestinationSelected: (i) => setState(() => _index = i),
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            destinations: [
+              for (final t in _tabs)
+                NavigationDestination(icon: Icon(t.$1), selectedIcon: Icon(t.$2), label: t.$3),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+}
