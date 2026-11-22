@@ -15,6 +15,7 @@ import 'package:chongmu_note/ui/widgets/charts.dart';
 import 'package:chongmu_note/ui/widgets/common.dart';
 import 'package:chongmu_note/data/firestore_repository.dart';
 import 'package:chongmu_note/ui/invite.dart';
+import 'package:chongmu_note/ui/pages/card_import_page.dart';
 
 void main() {
   setUpAll(() => initializeDateFormatting('ko_KR'));
@@ -577,5 +578,70 @@ void main() {
     await s.repo.updateGroup(s.group!.copyWith(name: '토요 축구회'));
     await tester.pumpAndSettle();
     expect(find.text('토요 축구회'), findsWidgets);
+  });
+
+  // ───────── 카드 문자로 지출 넣기 ─────────
+
+  Future<AppState> openCardImportAs(WidgetTester tester) async {
+    final s = await openTab(tester, seedTreasurer, '홈');
+    await tester.tap(find.text('카드 문자'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CardImportPage), findsOneWidget);
+    return s;
+  }
+
+  testWidgets('총무가 카드 문자 3건을 분류 확인 후 장부에 넣고, 다시는 안 나온다', (tester) async {
+    final s = await openCardImportAs(tester);
+    expect(find.text('새 카드 결제 3건'), findsOneWidget);
+    // 가게 이름으로 분류를 짐작 (펜션 → 숙박)
+    expect(find.text('숙박'), findsOneWidget);
+    final before = s.txns.length;
+    await tester.ensureVisible(find.byKey(const Key('smsSave')));
+    await tester.tap(find.byKey(const Key('smsSave')));
+    await tester.pumpAndSettle();
+    expect(s.txns.length, before + 3);
+    final pension = s.txns.firstWhere((t) => t.item == '해운대펜션');
+    expect((pension.amount, pension.category, pension.type), (180000, '숙박', TxnType.expense));
+    expect(pension.smsKey, isNotNull);
+    expect(s.settings!.smsEnabled, isTrue);
+    expect(find.text('새 카드 결제 0건'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    // 홈으로 돌아가도 '새 카드 결제' 알림은 없어요 (모두 넣음)
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('homeSms')), findsNothing);
+  });
+
+  testWidgets('카드를 고르면 그 카드 문자만, 넘긴 문자는 다시 안 나온다', (tester) async {
+    final s = await openCardImportAs(tester);
+    await s.repo.saveSettings(s.settings!.copyWith(cardFilters: const ['신한 1234']));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('다시 찾기'));
+    await tester.pumpAndSettle();
+    expect(find.text('새 카드 결제 2건'), findsOneWidget);
+    await tester.tap(find.text('넘기기').first);
+    await tester.pumpAndSettle();
+    expect(s.settings!.smsIgnored, hasLength(1));
+    await tester.tap(find.byTooltip('다시 찾기'));
+    await tester.pumpAndSettle();
+    expect(find.text('새 카드 결제 1건'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('카드 문자를 켠 총무 홈에 새 결제 알림이 뜬다', (tester) async {
+    final s = await openTab(tester, seedTreasurer, '홈');
+    await s.repo.saveSettings(s.settings!.copyWith(smsEnabled: true));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('homeSms')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('homeSms')));
+    await tester.pumpAndSettle();
+    expect(find.byType(CardImportPage), findsOneWidget);
+  });
+
+  testWidgets('일반 회원 홈에는 카드 문자 버튼이 없다', (tester) async {
+    await openTab(tester, '김민준', '홈');
+    expect(find.text('카드 문자'), findsNothing);
   });
 }

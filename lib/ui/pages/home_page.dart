@@ -8,6 +8,8 @@ import '../format.dart';
 import '../theme.dart';
 import '../widgets/charts.dart';
 import '../widgets/common.dart';
+import '../../sms/sms_source.dart';
+import 'card_import_page.dart';
 import 'ledger_page.dart';
 import 'txn_editor.dart';
 
@@ -109,6 +111,7 @@ class HomePage extends StatelessWidget {
               const SizedBox(height: 12),
               item(_BirthdayCard(month: now.month, members: s.members)),
             ],
+            if (s.isTreasurer && settings.smsEnabled) item(const _SmsPendingCard()),
             if (s.isTreasurer) ...[
               const SizedBox(height: 12),
               item(Row(children: [
@@ -133,6 +136,14 @@ class HomePage extends StatelessWidget {
                           item: '통장 이자',
                           amount: 0,
                         )),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _QuickButton(
+                    icon: Icons.sms_rounded,
+                    label: '카드 문자',
+                    onTap: () => openCardImport(context),
                   ),
                 ),
               ])),
@@ -284,7 +295,12 @@ class _QuickButton extends StatelessWidget {
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, color: c, size: 20),
         const SizedBox(width: 6),
-        Text(label, style: Theme.of(context).textTheme.labelLarge!.copyWith(color: c)),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(label, style: Theme.of(context).textTheme.labelLarge!.copyWith(color: c)),
+          ),
+        ),
       ]),
     );
   }
@@ -377,6 +393,62 @@ class _InfoCard extends StatelessWidget {
         ),
         if (onTap != null) const Icon(Icons.chevron_right_rounded, color: AppColors.gray),
       ]),
+    );
+  }
+}
+
+/// 총무: 아직 장부에 안 넣은 카드 결제 문자가 있으면 알려줘요 (최근 30일).
+class _SmsPendingCard extends StatefulWidget {
+  const _SmsPendingCard();
+
+  @override
+  State<_SmsPendingCard> createState() => _SmsPendingCardState();
+}
+
+class _SmsPendingCardState extends State<_SmsPendingCard> {
+  int _count = 0;
+  int _sum = 0;
+  int _seenTxns = -1;
+
+  Future<void> _scan(AppState s) async {
+    final src = SmsSource.of(demo: s.repo.isDemo);
+    if (!src.available || !await src.hasPermission()) return;
+    try {
+      final list = await src.pending(
+        since: DateUtils.dateOnly(DateTime.now()).subtract(const Duration(days: 30)),
+        settings: s.settings!,
+        txns: s.txns,
+      );
+      if (mounted) {
+        setState(() {
+          _count = list.length;
+          _sum = list.fold(0, (a, x) => a + x.amount);
+        });
+      }
+    } catch (_) {
+      // 못 읽으면 조용히 넘어가요. 가져오기 화면에서 다시 시도할 수 있어요.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppScope.of(context);
+    // 장부가 바뀌면(넣거나 지우면) 다시 세요.
+    if (_seenTxns != s.txns.length) {
+      _seenTxns = s.txns.length;
+      _scan(s);
+    }
+    if (_count == 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: _InfoCard(
+        key: const Key('homeSms'),
+        icon: Icons.sms_rounded,
+        color: AppColors.orange,
+        title: '새 카드 결제 $_count건 · ${won(_sum)}',
+        body: '눌러서 분류 확인하고 장부에 넣기',
+        onTap: () => openCardImport(context),
+      ),
     );
   }
 }

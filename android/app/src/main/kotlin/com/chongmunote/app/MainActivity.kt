@@ -1,10 +1,15 @@
 package com.chongmunote.app
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -12,6 +17,40 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
+    /// "문자 읽기 허락" 창의 답을 기다리는 중인 호출.
+    private var pendingSmsPermission: MethodChannel.Result? = null
+
+    private fun hasSmsPermission() =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == SMS_REQUEST) {
+            pendingSmsPermission?.success(hasSmsPermission())
+            pendingSmsPermission = null
+        }
+    }
+
+    /// 받은 문자함에서 [since](밀리초) 이후 문자들. 최근 것부터 최대 3000개.
+    private fun readInbox(since: Long): List<Map<String, Any?>> {
+        val out = mutableListOf<Map<String, Any?>>()
+        contentResolver.query(
+            Uri.parse("content://sms/inbox"),
+            arrayOf("address", "body", "date"),
+            "date >= ?",
+            arrayOf(since.toString()),
+            "date DESC",
+        )?.use { c ->
+            val a = c.getColumnIndex("address")
+            val b = c.getColumnIndex("body")
+            val d = c.getColumnIndex("date")
+            while (c.moveToNext() && out.size < 3000) {
+                out.add(mapOf("address" to c.getString(a), "body" to c.getString(b), "date" to c.getLong(d)))
+            }
+        }
+        return out
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createUpdateChannel()
@@ -29,6 +68,33 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // 카드 승인 문자 읽기 (총무가 켰을 때만)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "chongmu_note/sms").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasPermission" -> result.success(hasSmsPermission())
+                "requestPermission" -> {
+                    if (hasSmsPermission()) {
+                        result.success(true)
+                    } else {
+                        pendingSmsPermission?.success(false)
+                        pendingSmsPermission = result
+                        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_SMS), SMS_REQUEST)
+                    }
+                }
+                "inbox" -> {
+                    if (!hasSmsPermission()) {
+                        result.error("no_permission", "문자 읽기 허락이 필요해요", null)
+                    } else {
+                        try {
+                            result.success(readInbox((call.argument<Number>("since") ?: 0).toLong()))
+                        } catch (e: Exception) {
+                            result.error("read_failed", e.message, null)
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "chongmu_note/update").setMethodCallHandler { call, result ->
             when (call.method) {
                 // 설치 파일을 내려받을 폴더
@@ -57,5 +123,9 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    companion object {
+        private const val SMS_REQUEST = 4021
     }
 }
