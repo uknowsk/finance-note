@@ -6,6 +6,7 @@ import 'data/demo_repository.dart';
 import 'data/demo_seed.dart';
 import 'firebase_options.dart';
 import 'state/app_state.dart';
+import 'ui/group_exit.dart';
 import 'ui/shell.dart';
 import 'ui/sign_in.dart';
 import 'ui/splash.dart';
@@ -23,7 +24,7 @@ Future<void> main() async {
 }
 
 class ChongmuNoteApp extends StatelessWidget {
-  const ChongmuNoteApp({super.key, required this.useFirebase, this.demoState, this.checkUpdates = false});
+  const ChongmuNoteApp({super.key, required this.useFirebase, this.demoState, this.demoExit, this.checkUpdates = false});
 
   final bool useFirebase;
 
@@ -32,6 +33,9 @@ class ChongmuNoteApp extends StatelessWidget {
 
   /// 테스트에서 미리 만든 상태를 넣을 때.
   final AppState? demoState;
+
+  /// 체험 모드에서 모임 나가기·지우기를 눌렀을 때 (테스트용).
+  final GroupExit? demoExit;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -44,15 +48,16 @@ class ChongmuNoteApp extends StatelessWidget {
         home: UpdateWatcher(
           enabled: checkUpdates,
           push: useFirebase,
-          child: SplashGate(child: useFirebase ? const AuthGate() : _DemoRoot(state: demoState)),
+          child: SplashGate(child: useFirebase ? const AuthGate() : _DemoRoot(state: demoState, exit: demoExit)),
         ),
       );
 }
 
 class _DemoRoot extends StatefulWidget {
-  const _DemoRoot({this.state});
+  const _DemoRoot({this.state, this.exit});
 
   final AppState? state;
+  final GroupExit? exit;
 
   @override
   State<_DemoRoot> createState() => _DemoRootState();
@@ -66,7 +71,13 @@ class _DemoRootState extends State<_DemoRoot> {
         state: _state,
         child: ListenableBuilder(
           listenable: _state,
-          builder: (_, _) => _state.ready ? const AppShell() : const SizedBox.shrink(),
+          builder: (_, _) => _state.ready ? AppShell(exit: widget.exit ?? _demoExit) : const SizedBox.shrink(),
         ),
       );
 }
+
+/// 체험 모드: 실제로는 아무것도 안 지워요.
+final _demoExit = GroupExit(
+  leave: () async => throw StateError('체험 모드라 실제로 나가지는 않아요'),
+  delete: () async => throw StateError('체험 모드라 실제로 지우지는 않아요'),
+);

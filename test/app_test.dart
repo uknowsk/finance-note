@@ -17,6 +17,9 @@ import 'package:chongmu_note/data/firestore_repository.dart';
 import 'package:chongmu_note/ui/invite.dart';
 import 'package:chongmu_note/ui/pages/card_import_page.dart';
 import 'package:chongmu_note/ui/sign_in.dart';
+import 'package:chongmu_note/ui/pages/support_page.dart';
+import 'package:chongmu_note/ui/group_exit.dart';
+import 'package:chongmu_note/ui/pages/settings_page.dart';
 import 'package:chongmu_note/ui/format.dart';
 
 void main() {
@@ -774,4 +777,143 @@ void main() {
       expect(find.textContaining('코드를 찾아 넣었어요'), findsOneWidget);
     });
   }
+
+  // ───────── 개발자 후원 ─────────
+
+  testWidgets('설정: 후원 받을 곳이 비어 있으면 후원 메뉴가 안 보인다', (tester) async {
+    await openTab(tester, '김민준', '설정');
+    await tester.scrollUntilVisible(find.text('데이터'), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text('☕ 개발자 후원하기'), SupportInfo.app.isEmpty ? findsNothing : findsOneWidget);
+  });
+
+  for (final size in const [Size(320, 640), Size(390, 844), Size(844, 390)]) {
+    testWidgets('후원: 금액을 고르면 토스 링크에 금액이 들어간다 $size', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final opened = <String>[];
+      await tester.pumpWidget(MaterialApp(
+        home: SupportPage(
+          info: const SupportInfo(
+              tossId: 'devid', kakaoPayUrl: 'https://qr.kakaopay.com/abc', bank: '토스뱅크', account: '1000-1234-5678', holder: '개발자'),
+          open: (u) async {
+            opened.add(u);
+            return true;
+          },
+        ),
+      ));
+      await tester.tap(find.byKey(const Key('amount-5000')));
+      await tester.pump();
+      await tester.scrollUntilVisible(find.byKey(const Key('payToss')), 80, scrollable: find.byType(Scrollable).first);
+      await tester.ensureVisible(find.byKey(const Key('payToss')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('payToss')));
+      await tester.pump();
+      expect(opened.last, 'https://toss.me/devid/5000');
+      await tester.scrollUntilVisible(find.byKey(const Key('payKakao')), 80, scrollable: find.byType(Scrollable).first);
+      await tester.ensureVisible(find.byKey(const Key('payKakao')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('payKakao')));
+      await tester.pump();
+      expect(opened.last, 'https://qr.kakaopay.com/abc');
+      await tester.scrollUntilVisible(find.byKey(const Key('copyAccount')), 80, scrollable: find.byType(Scrollable).first);
+      await tester.ensureVisible(find.byKey(const Key('copyAccount')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('후원: 토스 아이디가 없으면 계좌로 토스 송금 화면을 연다', (tester) async {
+    final opened = <String>[];
+    await tester.pumpWidget(MaterialApp(
+      home: SupportPage(
+        info: const SupportInfo(bank: '국민은행', account: '123-45-6789', holder: '개발자'),
+        open: (u) async {
+          opened.add(u);
+          return true;
+        },
+      ),
+    ));
+    expect(find.byKey(const Key('payKakao')), findsNothing);
+    await tester.tap(find.byKey(const Key('amount-2000')));
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('payToss')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('payToss')));
+    await tester.pump();
+    final u = Uri.parse(opened.single);
+    expect((u.scheme, u.host), ('supertoss', 'send'));
+    expect(u.queryParameters, {'amount': '2000', 'bank': '국민은행', 'accountNo': '123456789'});
+  });
+
+  testWidgets('후원 받을 곳이 비어 있으면 준비 중 안내만', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: SupportPage(info: SupportInfo())));
+    expect(find.textContaining('준비하고 있어요'), findsOneWidget);
+    expect(find.byKey(const Key('payToss')), findsNothing);
+  });
+
+  // ───────── 모임 나가기 · 지우기 ─────────
+
+  Future<(AppState, List<String>)> openSettingsWithExit(WidgetTester tester, String name) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final calls = <String>[];
+    final state = AppState(DemoRepository(), myMemberId: memberIdOf(name));
+    await tester.pumpWidget(ChongmuNoteApp(
+      useFirebase: false,
+      demoState: state,
+      demoExit: GroupExit(leave: () async => calls.add('leave'), delete: () async => calls.add('delete')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('설정').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('모임 나가기'), 200, scrollable: find.byType(Scrollable).first);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
+    await tester.pumpAndSettle();
+    return (state, calls);
+  }
+
+  testWidgets('총무: 모임 이름을 똑같이 써야 모임을 지울 수 있다', (tester) async {
+    final (s, calls) = await openSettingsWithExit(tester, seedTreasurer);
+    await tester.tap(find.text('모임 지우기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DeleteGroupDialog), findsOneWidget);
+    TextButton go() => tester.widget<TextButton>(find.byKey(const Key('deleteGo')));
+    expect(go().onPressed, isNull);
+    await tester.enterText(find.byKey(const Key('deleteName')), '틀린 이름');
+    await tester.pump();
+    expect(go().onPressed, isNull);
+    await tester.enterText(find.byKey(const Key('deleteName')), s.group!.name);
+    await tester.pump();
+    expect(go().onPressed, isNotNull);
+    await tester.tap(find.byKey(const Key('deleteGo')));
+    await tester.pumpAndSettle();
+    expect(calls, ['delete']);
+  });
+
+  testWidgets('총무가 나가려 하면 총무 넘기기를 먼저 하라고 막는다', (tester) async {
+    final (_, calls) = await openSettingsWithExit(tester, seedTreasurer);
+    await tester.tap(find.text('모임 나가기'));
+    await tester.pumpAndSettle();
+    expect(find.text('총무는 바로 나갈 수 없어요'), findsOneWidget);
+    await tester.tap(find.text('알겠어요'));
+    await tester.pumpAndSettle();
+    expect(calls, isEmpty);
+  });
+
+  testWidgets('회장도 모임을 지울 수 있다', (tester) async {
+    await openSettingsWithExit(tester, seedPresident);
+    expect(find.text('모임 지우기'), findsOneWidget);
+  });
+
+  testWidgets('일반 회원은 나가기만 있고, 확인하면 나간다', (tester) async {
+    final (_, calls) = await openSettingsWithExit(tester, '김민준');
+    expect(find.text('모임 지우기'), findsNothing);
+    await tester.tap(find.text('모임 나가기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인').last);
+    await tester.pumpAndSettle();
+    expect(calls, ['leave']);
+  });
 }

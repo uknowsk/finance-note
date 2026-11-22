@@ -8,19 +8,24 @@ import '../../state/app_state.dart';
 import '../../update/update_prompt.dart';
 import '../../update/updater.dart';
 import '../format.dart';
+import '../group_exit.dart';
 import '../invite.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/group_avatar.dart';
 import '../widgets/sheet.dart';
 import 'card_import_page.dart';
+import 'support_page.dart';
 import 'ledger_page.dart';
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key, this.onSignOut, this.onSwitchGroup});
+  const SettingsPage({super.key, this.onSignOut, this.onSwitchGroup, this.exit});
 
   final VoidCallback? onSignOut;
   final VoidCallback? onSwitchGroup;
+
+  /// 모임 나가기·지우기 (실제 앱)
+  final GroupExit? exit;
 
   @override
   Widget build(BuildContext context) {
@@ -30,28 +35,33 @@ class SettingsPage extends StatelessWidget {
     final repo = s.repo;
 
     Widget group(List<Widget> rows) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: AppCard(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(children: [
-              for (final (i, r) in rows.indexed) ...[
-                if (i > 0) Divider(height: 0.5, thickness: 0.5, indent: 16, color: Theme.of(context).dividerColor),
-                r,
-              ],
-            ]),
-          ),
-        );
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            for (final (i, r) in rows.indexed) ...[
+              if (i > 0) Divider(height: 0.5, thickness: 0.5, indent: 16, color: Theme.of(context).dividerColor),
+              r,
+            ],
+          ],
+        ),
+      ),
+    );
 
     Widget tile(String title, {String? value, Widget? trailing, VoidCallback? onTap, Color? color}) {
       final row = Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        child: Row(children: [
-          Expanded(child: Text(title, style: tt.bodyLarge!.copyWith(color: color))),
-          if (value != null) Text(value, style: tt.bodyLarge!.copyWith(color: AppColors.gray)),
-          ?trailing,
-          if (onTap != null && trailing == null)
-            const Icon(Icons.chevron_right_rounded, color: AppColors.gray),
-        ]),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(title, style: tt.bodyLarge!.copyWith(color: color)),
+            ),
+            if (value != null) Text(value, style: tt.bodyLarge!.copyWith(color: AppColors.gray)),
+            ?trailing,
+            if (onTap != null && trailing == null) const Icon(Icons.chevron_right_rounded, color: AppColors.gray),
+          ],
+        ),
       );
       return onTap == null ? row : Pressable(onTap: onTap, child: row);
     }
@@ -59,102 +69,118 @@ class SettingsPage extends StatelessWidget {
     return LargeTitlePage(
       title: '설정',
       slivers: [
-        SliverList.list(children: [
-          if (repo.isDemo) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: AppCard(
-                child: Row(children: [
-                  const Icon(Icons.science_rounded, color: AppColors.orange),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text('체험 모드예요. 예시 모임으로 미리 보는 중이고, 바꾼 내용은 저장되지 않아요.',
-                        style: tt.bodyMedium),
+        SliverList.list(
+          children: [
+            if (repo.isDemo) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: AppCard(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.science_rounded, color: AppColors.orange),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text('체험 모드예요. 예시 모임으로 미리 보는 중이고, 바꾼 내용은 저장되지 않아요.', style: tt.bodyMedium)),
+                    ],
                   ),
-                ]),
+                ),
               ),
-            ),
-            const SectionHeader('누구로 볼까요?'),
-            group([
-              tile('보는 사람', value: me?.name, onTap: () => _pickMember(context, '누구로 볼까요?', (m) => s.actAs(m.id))),
-            ]),
-          ],
-          const SectionHeader('내 정보'),
-          group([
-            tile('이름', value: me?.name ?? '-'),
-            tile('역할',
-                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (s.isPresident) ...[const Badge2('회장', color: AppColors.orange), const SizedBox(width: 6)],
-                  if (s.isTreasurer) const Badge2('총무', color: AppColors.blue),
-                  if (!s.isPresident && !s.isTreasurer) const Badge2('회원', color: AppColors.gray),
-                ])),
-            if (onSignOut != null) tile('로그아웃', color: AppColors.red, onTap: onSignOut),
-          ]),
-          const SectionHeader('모임'),
-          group([
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(children: [
-                GroupAvatar(group: s.group!, size: 40),
-                const SizedBox(width: 12),
-                Expanded(child: Text(s.group!.name, style: tt.titleMedium)),
+              const SectionHeader('누구로 볼까요?'),
+              group([
+                tile('보는 사람', value: me?.name, onTap: () => _pickMember(context, '누구로 볼까요?', (m) => s.actAs(m.id))),
               ]),
-            ),
-            tile('초대코드',
-                value: s.group!.inviteCode,
-                onTap: () => showAppSheet(context, (_) => const _InviteSheet(), scrollable: false)),
-            if (onSwitchGroup != null) tile('다른 모임 보기 · 새 모임', onTap: onSwitchGroup),
-          ]),
-          if (s.isTreasurer) ...[
-            const SectionHeader('모임 설정'),
+            ],
+            const SectionHeader('내 정보'),
             group([
-              tile('이름 · 사진 · 색',
-                  onTap: () => showAppSheet(context, (_) => const _GroupEditor())),
-              tile('한 달 회비 · 시작 잔고',
-                  value: s.settings!.usesDues ? won(s.settings!.monthlyDues) : '회비 없음',
-                  onTap: () => showAppSheet(context, (_) => const _MoneyEditor())),
-              tile('수입 · 지출 분류',
-                  onTap: () => showAppSheet(context, (_) => const _CategoryEditor())),
-              tile('카드 문자로 지출 넣기', onTap: () => openCardImport(context)),
+              tile('이름', value: me?.name ?? '-'),
+              tile(
+                '역할',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (s.isPresident) ...[const Badge2('회장', color: AppColors.orange), const SizedBox(width: 6)],
+                    if (s.isTreasurer) const Badge2('총무', color: AppColors.blue),
+                    if (!s.isPresident && !s.isTreasurer) const Badge2('회원', color: AppColors.gray),
+                  ],
+                ),
+              ),
+              if (onSignOut != null) tile('로그아웃', color: AppColors.red, onTap: onSignOut),
             ]),
-          ],
-          SectionHeader('회원 명단 · ${s.members.length}명'),
-          group([
-            for (final m in s.members)
-              tile(m.name,
-                  onTap: s.isTreasurer ? () => _memberMenu(context, m) : null,
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (m.birthdayLabel != null) ...[
-                      Text('🎂 ${m.birthdayLabel}', style: tt.bodySmall!.copyWith(color: AppColors.gray)),
-                      const SizedBox(width: 6),
-                    ],
-                    if (m.isExempt(DateTime.now().year)) const Badge2('면제', color: AppColors.gray),
-                    if (s.isPresidentMember(m)) ...[
-                      const SizedBox(width: 6),
-                      const Badge2('회장', color: AppColors.orange),
-                    ],
-                    if (m.isTreasurer) ...[
-                      const SizedBox(width: 6),
-                      const Badge2('총무', color: AppColors.blue),
-                    ],
-                    if (s.isTreasurer) const Icon(Icons.chevron_right_rounded, color: AppColors.gray),
-                  ])),
-            if (s.isTreasurer)
-              tile('+ 회원 넣기', color: AppColors.blue, onTap: () => _addMember(context)),
-          ]),
-          if (s.isTreasurer)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(32, 8, 32, 0),
-              child: Text('이름을 누르면 생일, ${DateTime.now().year}년 회비 면제를 정하거나 명단에서 뺄 수 있어요. 앱에 아직 안 들어온 회원도 미리 넣어 두면 회비를 기록할 수 있어요.',
-                  style: tt.bodySmall!.copyWith(color: AppColors.gray)),
-            ),
-          if (s.isTreasurer) ...[
-            const SectionHeader('총무 메뉴'),
+            const SectionHeader('모임'),
             group([
-              tile('회장 정하기',
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    GroupAvatar(group: s.group!, size: 40),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(s.group!.name, style: tt.titleMedium)),
+                  ],
+                ),
+              ),
+              tile(
+                '초대코드',
+                value: s.group!.inviteCode,
+                onTap: () => showAppSheet(context, (_) => const _InviteSheet(), scrollable: false),
+              ),
+              if (onSwitchGroup != null) tile('다른 모임 보기 · 새 모임', onTap: onSwitchGroup),
+            ]),
+            if (s.isTreasurer) ...[
+              const SectionHeader('모임 설정'),
+              group([
+                tile('이름 · 사진 · 색', onTap: () => showAppSheet(context, (_) => const _GroupEditor())),
+                tile(
+                  '한 달 회비 · 시작 잔고',
+                  value: s.settings!.usesDues ? won(s.settings!.monthlyDues) : '회비 없음',
+                  onTap: () => showAppSheet(context, (_) => const _MoneyEditor()),
+                ),
+                tile('수입 · 지출 분류', onTap: () => showAppSheet(context, (_) => const _CategoryEditor())),
+                tile('카드 문자로 지출 넣기', onTap: () => openCardImport(context)),
+              ]),
+            ],
+            SectionHeader('회원 명단 · ${s.members.length}명'),
+            group([
+              for (final m in s.members)
+                tile(
+                  m.name,
+                  onTap: s.isTreasurer ? () => _memberMenu(context, m) : null,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (m.birthdayLabel != null) ...[
+                        Text('🎂 ${m.birthdayLabel}', style: tt.bodySmall!.copyWith(color: AppColors.gray)),
+                        const SizedBox(width: 6),
+                      ],
+                      if (m.isExempt(DateTime.now().year)) const Badge2('면제', color: AppColors.gray),
+                      if (s.isPresidentMember(m)) ...[
+                        const SizedBox(width: 6),
+                        const Badge2('회장', color: AppColors.orange),
+                      ],
+                      if (m.isTreasurer) ...[const SizedBox(width: 6), const Badge2('총무', color: AppColors.blue)],
+                      if (s.isTreasurer) const Icon(Icons.chevron_right_rounded, color: AppColors.gray),
+                    ],
+                  ),
+                ),
+              if (s.isTreasurer) tile('+ 회원 넣기', color: AppColors.blue, onTap: () => _addMember(context)),
+            ]),
+            if (s.isTreasurer)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(32, 8, 32, 0),
+                child: Text(
+                  '이름을 누르면 생일, ${DateTime.now().year}년 회비 면제를 정하거나 명단에서 뺄 수 있어요. 앱에 아직 안 들어온 회원도 미리 넣어 두면 회비를 기록할 수 있어요.',
+                  style: tt.bodySmall!.copyWith(color: AppColors.gray),
+                ),
+              ),
+            if (s.isTreasurer) ...[
+              const SectionHeader('총무 메뉴'),
+              group([
+                tile(
+                  '회장 정하기',
                   value: s.memberById(s.presidentId)?.name,
-                  onTap: () => _pickMember(context, '누가 회장인가요?', (m) => _run(context, () => repo.setPresident(m.id)))),
-              tile('총무 넘기기', onTap: () => _pickMember(context, '누구에게 넘길까요?', (to) async {
+                  onTap: () => _pickMember(context, '누가 회장인가요?', (m) => _run(context, () => repo.setPresident(m.id))),
+                ),
+                tile(
+                  '총무 넘기기',
+                  onTap: () => _pickMember(context, '누구에게 넘길까요?', (to) async {
                     if (to.id == me!.id) return;
                     final ok = await confirm(context, '${to.name}님에게 총무를 넘길까요?', '넘기면 바로 회원 권한으로 바뀌어요.');
                     if (!ok) return;
@@ -165,20 +191,87 @@ class SettingsPage extends StatelessWidget {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
                       }
                     }
-                  })),
+                  }),
+                ),
+              ]),
+              if (repo is FirestoreRepository) _JoinRequests(repo: repo),
+            ],
+            if (exit != null) ...[
+              const SectionHeader('모임 나가기 · 지우기'),
+              group([
+                tile('모임 나가기', color: AppColors.red, onTap: () => _leave(context, exit!)),
+                if (s.isTreasurer || s.isPresident)
+                  tile('모임 지우기', color: AppColors.red, onTap: () => _delete(context, exit!)),
+              ]),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(32, 8, 32, 0),
+                child: Text(
+                  s.isTreasurer || s.isPresident
+                      ? '모임 지우기는 총무와 회장만 할 수 있어요. 장부·명단·공지·메시지가 모두 지워지고 되돌릴 수 없어요.'
+                      : '나가도 명단에 이름과 회비 기록은 남아요.',
+                  style: tt.bodySmall!.copyWith(color: AppColors.gray),
+                ),
+              ),
+            ],
+            const SectionHeader('앱 정보'),
+            group([
+              tile('버전', trailing: const _VersionText()),
+              if (UpdateWatcher.of(context)?.enabled ?? false)
+                tile('업데이트 확인', onTap: () => UpdateWatcher.of(context)!.check(manual: true)),
+              tile('데이터', value: repo.isDemo ? '체험 모드' : '실시간 동기화'),
+              // 후원 받을 곳을 넣기 전에는 숨겨요.
+              if (!SupportInfo.app.isEmpty)
+                tile(
+                  '☕ 개발자 후원하기',
+                  onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SupportPage())),
+                ),
             ]),
-            if (repo is FirestoreRepository) _JoinRequests(repo: repo),
           ],
-          const SectionHeader('앱 정보'),
-          group([
-            tile('버전', trailing: const _VersionText()),
-            if (UpdateWatcher.of(context)?.enabled ?? false)
-              tile('업데이트 확인', onTap: () => UpdateWatcher.of(context)!.check(manual: true)),
-            tile('데이터', value: repo.isDemo ? '체험 모드' : '실시간 동기화'),
-          ]),
-        ]),
+        ),
       ],
     );
+  }
+
+  static String _msg(Object e) => e is StateError ? e.message : '$e';
+
+  Future<void> _leave(BuildContext context, GroupExit exit) async {
+    final s = AppScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    if (s.isTreasurer) {
+      await showDialog<void>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('총무는 바로 나갈 수 없어요'),
+          content: const Text('먼저 "총무 넘기기"로 다른 회원에게 총무를 맡기거나, 모임을 지워 주세요.'),
+          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('알겠어요'))],
+        ),
+      );
+      return;
+    }
+    final ok = await confirm(context, '"${s.group!.name}"에서 나갈까요?', '다시 들어오려면 초대코드로 가입 신청을 해야 해요. 명단의 이름과 회비 기록은 남아요.');
+    if (!ok) return;
+    try {
+      await exit.leave();
+      showDone(messenger, '모임에서 나왔어요');
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(_msg(e))));
+    }
+  }
+
+  Future<void> _delete(BuildContext context, GroupExit exit) async {
+    final s = AppScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => DeleteGroupDialog(name: s.group!.name, txnCount: s.txns.length, memberCount: s.members.length),
+    );
+    if (ok != true) return;
+    try {
+      await exit.delete();
+      showDone(messenger, '모임을 지웠어요');
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('지우지 못했어요: ${_msg(e)}')));
+    }
   }
 
   /// 총무: 회원 한 명의 생일과 올해 회비 면제를 정하는 메뉴.
@@ -257,46 +350,56 @@ class SettingsPage extends StatelessWidget {
           color: bg,
           child: SafeArea(
             top: false,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Row(children: [
-                CupertinoButton(onPressed: () => Navigator.pop(c), child: const Text('취소')),
-                Expanded(
-                  child: Text('${m.name} 생일',
-                      textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-                ),
-                CupertinoButton(
-                  onPressed: () {
-                    Navigator.pop(c);
-                    // 2월 30일 같은 날은 그 달 마지막 날로 (2월은 29일까지 허용).
-                    final last = DateTime(2024, month + 1, 0).day;
-                    final d = day > last ? last : day;
-                    _run(context, () => s.repo.setBirthday(m.id, Member.birthdayKey(month, d)));
-                  },
-                  child: const Text('저장', style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
-              ]),
-              SizedBox(
-                height: 200,
-                child: Row(children: [
-                  Expanded(
-                    child: CupertinoPicker(
-                      itemExtent: 36,
-                      scrollController: FixedExtentScrollController(initialItem: month - 1),
-                      onSelectedItemChanged: (i) => month = i + 1,
-                      children: [for (var i = 1; i <= 12; i++) Center(child: Text('$i월'))],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    CupertinoButton(onPressed: () => Navigator.pop(c), child: const Text('취소')),
+                    Expanded(
+                      child: Text(
+                        '${m.name} 생일',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: CupertinoPicker(
-                      itemExtent: 36,
-                      scrollController: FixedExtentScrollController(initialItem: day - 1),
-                      onSelectedItemChanged: (i) => day = i + 1,
-                      children: [for (var i = 1; i <= 31; i++) Center(child: Text('$i일'))],
+                    CupertinoButton(
+                      onPressed: () {
+                        Navigator.pop(c);
+                        // 2월 30일 같은 날은 그 달 마지막 날로 (2월은 29일까지 허용).
+                        final last = DateTime(2024, month + 1, 0).day;
+                        final d = day > last ? last : day;
+                        _run(context, () => s.repo.setBirthday(m.id, Member.birthdayKey(month, d)));
+                      },
+                      child: const Text('저장', style: TextStyle(fontWeight: FontWeight.w600)),
                     ),
+                  ],
+                ),
+                SizedBox(
+                  height: 200,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: CupertinoPicker(
+                          itemExtent: 36,
+                          scrollController: FixedExtentScrollController(initialItem: month - 1),
+                          onSelectedItemChanged: (i) => month = i + 1,
+                          children: [for (var i = 1; i <= 12; i++) Center(child: Text('$i월'))],
+                        ),
+                      ),
+                      Expanded(
+                        child: CupertinoPicker(
+                          itemExtent: 36,
+                          scrollController: FixedExtentScrollController(initialItem: day - 1),
+                          onSelectedItemChanged: (i) => day = i + 1,
+                          children: [for (var i = 1; i <= 31; i++) Center(child: Text('$i일'))],
+                        ),
+                      ),
+                    ],
                   ),
-                ]),
-              ),
-            ]),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -350,28 +453,34 @@ class _JoinRequests extends StatelessWidget {
       builder: (context, snap) {
         final reqs = snap.data ?? const [];
         if (reqs.isEmpty) return const SizedBox.shrink();
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SectionHeader('가입 신청 · ${reqs.length}건'),
-          for (final r in reqs)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: AppCard(
-                child: Row(children: [
-                  Expanded(
-                    child: Text(
-                        '${r.memberId != null ? (s.memberById(r.memberId)?.name ?? '?') : '${r.name} (새 회원)'}'
-                        ' · ${r.email ?? ''}',
-                        style: Theme.of(context).textTheme.bodyMedium),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionHeader('가입 신청 · ${reqs.length}건'),
+            for (final r in reqs)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: AppCard(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${r.memberId != null ? (s.memberById(r.memberId)?.name ?? '?') : '${r.name} (새 회원)'}'
+                          ' · ${r.email ?? ''}',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => repo.rejectJoin(r.uid),
+                        child: const Text('거절', style: TextStyle(color: AppColors.red)),
+                      ),
+                      TextButton(onPressed: () => repo.approveJoin(r), child: const Text('승인')),
+                    ],
                   ),
-                  TextButton(
-                    onPressed: () => repo.rejectJoin(r.uid),
-                    child: const Text('거절', style: TextStyle(color: AppColors.red)),
-                  ),
-                  TextButton(onPressed: () => repo.approveJoin(r), child: const Text('승인')),
-                ]),
+                ),
               ),
-            ),
-        ]);
+          ],
+        );
       },
     );
   }
@@ -383,15 +492,20 @@ class _VersionText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => FutureBuilder<String>(
-        future: Updater.currentVersion(),
-        builder: (context, snap) => Text(snap.hasData ? 'v${snap.data}' : '-',
-            style: Theme.of(context).textTheme.bodyLarge!.copyWith(color: AppColors.gray)),
-      );
+    future: Updater.currentVersion(),
+    builder: (context, snap) => Text(
+      snap.hasData ? 'v${snap.data}' : '-',
+      style: Theme.of(context).textTheme.bodyLarge!.copyWith(color: AppColors.gray),
+    ),
+  );
 }
 
 /// 한 줄 글자 묻기. 취소하면 null.
 Future<String?> askText(BuildContext context, String title, {String hint = '', String initial = ''}) =>
-    showDialog<String>(context: context, builder: (_) => _AskText(title: title, hint: hint, initial: initial));
+    showDialog<String>(
+      context: context,
+      builder: (_) => _AskText(title: title, hint: hint, initial: initial),
+    );
 
 class _AskText extends StatefulWidget {
   const _AskText({required this.title, required this.hint, required this.initial});
@@ -415,19 +529,19 @@ class _AskTextState extends State<_AskText> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text(widget.title),
-        content: TextField(
-          key: const Key('askText'),
-          controller: _c,
-          autofocus: true,
-          decoration: InputDecoration(hintText: widget.hint),
-          onSubmitted: (v) => Navigator.pop(context, v.trim()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
-          TextButton(onPressed: () => Navigator.pop(context, _c.text.trim()), child: const Text('확인')),
-        ],
-      );
+    title: Text(widget.title),
+    content: TextField(
+      key: const Key('askText'),
+      controller: _c,
+      autofocus: true,
+      decoration: InputDecoration(hintText: widget.hint),
+      onSubmitted: (v) => Navigator.pop(context, v.trim()),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+      TextButton(onPressed: () => Navigator.pop(context, _c.text.trim()), child: const Text('확인')),
+    ],
+  );
 }
 
 /// 초대코드 보기·복사·새로 만들기.
@@ -442,50 +556,61 @@ class _InviteSheet extends StatelessWidget {
     final repo = s.repo;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('회원 초대하기', style: tt.titleLarge, textAlign: TextAlign.center),
-        const SizedBox(height: 16),
-        AppCard(
-          child: Column(children: [
-            Text('초대코드', style: tt.labelMedium),
-            const SizedBox(height: 6),
-            SelectableText(g.inviteCode,
-                key: const Key('inviteCodeText'),
-                style: tt.displaySmall!.copyWith(letterSpacing: 6, fontWeight: FontWeight.w700)),
-          ]),
-        ),
-        const SizedBox(height: 12),
-        Text('초대 글을 복사해서 카톡방에 붙여넣으면, 받은 사람이 앱을 깔고 코드를 넣어 가입 신청해요. '
-            '신청은 설정 화면에서 총무가 승인해요.', style: tt.bodySmall),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          icon: const Icon(Icons.copy_rounded),
-          label: const Text('초대 글 복사'),
-          onPressed: () async {
-            final messenger = ScaffoldMessenger.of(context);
-            await copyInvite(g);
-            HapticFeedback.selectionClick();
-            showDone(messenger, '복사했어요. 카톡에 붙여넣어 주세요');
-          },
-        ),
-        if (s.isTreasurer && repo is FirestoreRepository) ...[
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () async {
-              final ok = await confirm(context, '초대코드를 새로 만들까요?', '지금 코드는 더 이상 못 써요. 이미 가입한 회원은 그대로예요.');
-              if (!ok || !context.mounted) return;
-              final messenger = ScaffoldMessenger.of(context);
-              try {
-                await repo.renewInviteCode(g.inviteCode);
-                showDone(messenger, '새 초대코드를 만들었어요');
-              } catch (e) {
-                messenger.showSnackBar(SnackBar(content: Text('못 만들었어요: $e')));
-              }
-            },
-            child: const Text('초대코드 새로 만들기'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('회원 초대하기', style: tt.titleLarge, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          AppCard(
+            child: Column(
+              children: [
+                Text('초대코드', style: tt.labelMedium),
+                const SizedBox(height: 6),
+                SelectableText(
+                  g.inviteCode,
+                  key: const Key('inviteCodeText'),
+                  style: tt.displaySmall!.copyWith(letterSpacing: 6, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(height: 12),
+          Text(
+            '초대 글을 복사해서 카톡방에 붙여넣으면, 받은 사람이 앱을 깔고 코드를 넣어 가입 신청해요. '
+            '신청은 설정 화면에서 총무가 승인해요.',
+            style: tt.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            icon: const Icon(Icons.copy_rounded),
+            label: const Text('초대 글 복사'),
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              await copyInvite(g);
+              HapticFeedback.selectionClick();
+              showDone(messenger, '복사했어요. 카톡에 붙여넣어 주세요');
+            },
+          ),
+          if (s.isTreasurer && repo is FirestoreRepository) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () async {
+                final ok = await confirm(context, '초대코드를 새로 만들까요?', '지금 코드는 더 이상 못 써요. 이미 가입한 회원은 그대로예요.');
+                if (!ok || !context.mounted) return;
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  await repo.renewInviteCode(g.inviteCode);
+                  showDone(messenger, '새 초대코드를 만들었어요');
+                } catch (e) {
+                  messenger.showSnackBar(SnackBar(content: Text('못 만들었어요: $e')));
+                }
+              },
+              child: const Text('초대코드 새로 만들기'),
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }
@@ -513,47 +638,59 @@ class _GroupEditorState extends State<_GroupEditor> {
     final tt = Theme.of(context).textTheme;
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.viewInsetsOf(context).bottom),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('모임 꾸미기', style: tt.titleLarge, textAlign: TextAlign.center),
-        const SizedBox(height: 16),
-        Center(child: GroupAvatar(group: _g.copyWith(name: _name.text), size: 88)),
-        const SizedBox(height: 8),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          TextButton(
-            onPressed: () async {
-              final l = await pickGroupLogo();
-              if (l != null) setState(() => _g = _g.copyWith(logo: l));
-            },
-            child: Text(_g.logo == null ? '사진 넣기' : '사진 바꾸기'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('모임 꾸미기', style: tt.titleLarge, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          Center(
+            child: GroupAvatar(group: _g.copyWith(name: _name.text), size: 88),
           ),
-          if (_g.logo != null)
-            TextButton(
-              onPressed: () => setState(() => _g = _g.copyWith(clearLogo: true)),
-              child: const Text('사진 빼기', style: TextStyle(color: AppColors.red)),
-            ),
-        ]),
-        const SizedBox(height: 8),
-        Text('모임 이름', style: tt.labelMedium),
-        const SizedBox(height: 6),
-        TextField(key: const Key('editGroupName'), controller: _name, onChanged: (_) => setState(() {})),
-        const SizedBox(height: 14),
-        Text('모임 색', style: tt.labelMedium),
-        const SizedBox(height: 8),
-        ColorDots(value: _g.color, onPick: (c) => setState(() => _g = _g.copyWith(color: c))),
-        const SizedBox(height: 20),
-        FilledButton(
-          onPressed: _name.text.trim().isEmpty
-              ? null
-              : () async {
-                  final s = AppScope.of(context);
-                  final messenger = ScaffoldMessenger.of(context);
-                  Navigator.pop(context);
-                  await s.repo.updateGroup(_g.copyWith(name: _name.text.trim()));
-                  showDone(messenger, '저장했어요');
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton(
+                onPressed: () async {
+                  final l = await pickGroupLogo();
+                  if (l != null) setState(() => _g = _g.copyWith(logo: l));
                 },
-          child: const Text('저장'),
-        ),
-      ]),
+                child: Text(_g.logo == null ? '사진 넣기' : '사진 바꾸기'),
+              ),
+              if (_g.logo != null)
+                TextButton(
+                  onPressed: () => setState(() => _g = _g.copyWith(clearLogo: true)),
+                  child: const Text('사진 빼기', style: TextStyle(color: AppColors.red)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('모임 이름', style: tt.labelMedium),
+          const SizedBox(height: 6),
+          TextField(key: const Key('editGroupName'), controller: _name, onChanged: (_) => setState(() {})),
+          const SizedBox(height: 14),
+          Text('모임 색', style: tt.labelMedium),
+          const SizedBox(height: 8),
+          ColorDots(
+            value: _g.color,
+            onPick: (c) => setState(() => _g = _g.copyWith(color: c)),
+          ),
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: _name.text.trim().isEmpty
+                ? null
+                : () async {
+                    final s = AppScope.of(context);
+                    final messenger = ScaffoldMessenger.of(context);
+                    Navigator.pop(context);
+                    await s.repo.updateGroup(_g.copyWith(name: _name.text.trim()));
+                    showDone(messenger, '저장했어요');
+                  },
+            child: const Text('저장'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -586,45 +723,50 @@ class _MoneyEditorState extends State<_MoneyEditor> {
     final tt = Theme.of(context).textTheme;
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.viewInsetsOf(context).bottom),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('회비 · 시작 잔고', style: tt.titleLarge, textAlign: TextAlign.center),
-        const SizedBox(height: 16),
-        Text('한 달 회비', style: tt.labelMedium),
-        const SizedBox(height: 6),
-        TextField(
-          key: const Key('editDues'),
-          controller: _dues,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(hintText: '회비가 없으면 비워 두세요', suffixText: '원'),
-        ),
-        const SizedBox(height: 4),
-        Text('1년치를 한 번에 받아도 돼요. 낸 금액만큼 몇 달 치가 채워졌는지 자동으로 계산해요.', style: tt.bodySmall),
-        const SizedBox(height: 14),
-        Text('장부 시작 잔고', style: tt.labelMedium),
-        const SizedBox(height: 6),
-        TextField(
-          key: const Key('editOpening'),
-          controller: _opening,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(suffixText: '원'),
-        ),
-        const SizedBox(height: 8),
-        Text('이 날짜부터의 기록으로 잔고를 계산해요', style: tt.bodySmall),
-        const SizedBox(height: 6),
-        DateButton(date: _date, onPicked: (d) => setState(() => _date = d)),
-        const SizedBox(height: 20),
-        FilledButton(
-          onPressed: () async {
-            final s = AppScope.of(context);
-            final messenger = ScaffoldMessenger.of(context);
-            Navigator.pop(context);
-            await s.repo.saveSettings(
-                _st.copyWith(monthlyDues: _num(_dues), openingBalance: _num(_opening), openingDate: _date));
-            showDone(messenger, '저장했어요');
-          },
-          child: const Text('저장'),
-        ),
-      ]),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('회비 · 시작 잔고', style: tt.titleLarge, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          Text('한 달 회비', style: tt.labelMedium),
+          const SizedBox(height: 6),
+          TextField(
+            key: const Key('editDues'),
+            controller: _dues,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(hintText: '회비가 없으면 비워 두세요', suffixText: '원'),
+          ),
+          const SizedBox(height: 4),
+          Text('1년치를 한 번에 받아도 돼요. 낸 금액만큼 몇 달 치가 채워졌는지 자동으로 계산해요.', style: tt.bodySmall),
+          const SizedBox(height: 14),
+          Text('장부 시작 잔고', style: tt.labelMedium),
+          const SizedBox(height: 6),
+          TextField(
+            key: const Key('editOpening'),
+            controller: _opening,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(suffixText: '원'),
+          ),
+          const SizedBox(height: 8),
+          Text('이 날짜부터의 기록으로 잔고를 계산해요', style: tt.bodySmall),
+          const SizedBox(height: 6),
+          DateButton(date: _date, onPicked: (d) => setState(() => _date = d)),
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: () async {
+              final s = AppScope.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              Navigator.pop(context);
+              await s.repo.saveSettings(
+                _st.copyWith(monthlyDues: _num(_dues), openingBalance: _num(_opening), openingDate: _date),
+              );
+              showDone(messenger, '저장했어요');
+            },
+            child: const Text('저장'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -644,26 +786,30 @@ class _CategoryEditorState extends State<_CategoryEditor> {
 
   Widget _chips(String title, List<String> list) {
     final tt = Theme.of(context).textTheme;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: tt.labelMedium),
-      const SizedBox(height: 8),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        if (identical(list, _income)) const Chip(label: Text(Categories.dues)),
-        for (final c in list)
-          InputChip(
-            label: Text(c),
-            onDeleted: list.length <= 1 ? null : () => setState(() => list.remove(c)),
-          ),
-        ActionChip(
-          avatar: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('더하기'),
-          onPressed: () async {
-            final v = await askText(context, '$title 더하기', hint: '예: 회식');
-            if (v != null && v.isNotEmpty && !list.contains(v) && v != Categories.dues) setState(() => list.add(v));
-          },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: tt.labelMedium),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (identical(list, _income)) const Chip(label: Text(Categories.dues)),
+            for (final c in list)
+              InputChip(label: Text(c), onDeleted: list.length <= 1 ? null : () => setState(() => list.remove(c))),
+            ActionChip(
+              avatar: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('더하기'),
+              onPressed: () async {
+                final v = await askText(context, '$title 더하기', hint: '예: 회식');
+                if (v != null && v.isNotEmpty && !list.contains(v) && v != Categories.dues) setState(() => list.add(v));
+              },
+            ),
+          ],
         ),
-      ]),
-    ]);
+      ],
+    );
   }
 
   @override
@@ -671,29 +817,95 @@ class _CategoryEditorState extends State<_CategoryEditor> {
     final tt = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('수입 · 지출 분류', style: tt.titleLarge, textAlign: TextAlign.center),
-        const SizedBox(height: 4),
-        Text('✕를 누르면 빠져요. 이미 남긴 기록은 그대로예요.', style: tt.bodySmall, textAlign: TextAlign.center),
-        const SizedBox(height: 16),
-        _chips('수입 분류', _income),
-        const SizedBox(height: 16),
-        _chips('지출 분류', _expense),
-        const SizedBox(height: 20),
-        FilledButton(
-          onPressed: () async {
-            final s = AppScope.of(context);
-            final messenger = ScaffoldMessenger.of(context);
-            Navigator.pop(context);
-            await s.repo.saveSettings(_st.copyWith(
-              incomeCategories: [Categories.dues, ..._income],
-              expenseCategories: [..._expense],
-            ));
-            showDone(messenger, '분류를 저장했어요');
-          },
-          child: const Text('저장'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('수입 · 지출 분류', style: tt.titleLarge, textAlign: TextAlign.center),
+          const SizedBox(height: 4),
+          Text('✕를 누르면 빠져요. 이미 남긴 기록은 그대로예요.', style: tt.bodySmall, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          _chips('수입 분류', _income),
+          const SizedBox(height: 16),
+          _chips('지출 분류', _expense),
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: () async {
+              final s = AppScope.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              Navigator.pop(context);
+              await s.repo.saveSettings(
+                _st.copyWith(incomeCategories: [Categories.dues, ..._income], expenseCategories: [..._expense]),
+              );
+              showDone(messenger, '분류를 저장했어요');
+            },
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 실수로 지우지 않게 모임 이름을 똑같이 써야 지울 수 있어요.
+class DeleteGroupDialog extends StatefulWidget {
+  const DeleteGroupDialog({super.key, required this.name, required this.txnCount, required this.memberCount});
+
+  final String name;
+  final int txnCount;
+  final int memberCount;
+
+  @override
+  State<DeleteGroupDialog> createState() => _DeleteGroupDialogState();
+}
+
+class _DeleteGroupDialogState extends State<DeleteGroupDialog> {
+  final _c = TextEditingController();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  bool get _match => _c.text.trim() == widget.name.trim();
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return AlertDialog(
+      title: const Text('모임을 지울까요?'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '장부 기록 ${widget.txnCount}건, 회원 ${widget.memberCount}명, 모임 기록·공지·메시지가 모두 지워져요. '
+              '모든 회원의 폰에서도 사라지고, 되돌릴 수 없어요.',
+            ),
+            const SizedBox(height: 14),
+            Text('확인을 위해 모임 이름 "${widget.name}"을 똑같이 써 주세요.', style: tt.bodySmall),
+            const SizedBox(height: 8),
+            TextField(
+              key: const Key('deleteName'),
+              controller: _c,
+              autofocus: true,
+              decoration: InputDecoration(hintText: widget.name),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
         ),
-      ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
+        TextButton(
+          key: const Key('deleteGo'),
+          onPressed: _match ? () => Navigator.pop(context, true) : null,
+          style: TextButton.styleFrom(foregroundColor: AppColors.red),
+          child: const Text('영원히 지우기'),
+        ),
+      ],
     );
   }
 }

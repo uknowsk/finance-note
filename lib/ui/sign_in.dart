@@ -8,6 +8,7 @@ import '../data/firestore_repository.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import 'shell.dart';
+import 'group_exit.dart';
 import 'invite.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
@@ -115,7 +116,14 @@ class _GroupViewState extends State<_GroupView> {
             child: ListenableBuilder(
               listenable: _state!,
               builder: (_, _) => _state!.ready
-                  ? AppShell(onSignOut: AuthService.signOut, onSwitchGroup: widget.onSwitch)
+                  ? AppShell(
+                      onSignOut: AuthService.signOut,
+                      onSwitchGroup: widget.onSwitch,
+                      exit: GroupExit(
+                        leave: () => widget.dir.leave(widget.gid, widget.user.uid),
+                        delete: () => widget.dir.deleteGroup(widget.gid, widget.user.uid),
+                      ),
+                    )
                   : const _Splash(),
             ),
           );
@@ -334,12 +342,32 @@ class _PendingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(leading: BackButton(onPressed: onBack)),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('가입 신청을 보냈어요.\n총무가 승인하면 바로 열려요.',
-                textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-          ),
+        body: StreamBuilder<Group?>(
+          stream: dir.group(gid),
+          builder: (context, g) {
+            final gone = g.connectionState == ConnectionState.active && g.data == null;
+            final tt = Theme.of(context).textTheme;
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(gone ? '이 모임은 지워졌어요.' : '가입 신청을 보냈어요.\n총무가 승인하면 바로 열려요.',
+                      textAlign: TextAlign.center, style: tt.titleMedium),
+                  if (gone) ...[
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      key: const Key('forgetGone'),
+                      onPressed: () async {
+                        await dir.forget(gid, user.uid);
+                        onBack();
+                      },
+                      child: const Text('내 목록에서 빼기'),
+                    ),
+                  ],
+                ]),
+              ),
+            );
+          },
         ),
       );
 }
