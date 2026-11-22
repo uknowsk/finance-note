@@ -105,6 +105,18 @@ class MainActivity : FlutterActivity() {
                     dir.listFiles()?.forEach { it.delete() }
                     result.success(dir.absolutePath)
                 }
+                // 링크 열기 (후원: 토스·카카오페이)
+                "openUrl" -> {
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url")!!)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
                 // 안드로이드 설치 화면 열기
                 "install" -> {
                     try {

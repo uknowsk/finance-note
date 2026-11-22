@@ -14,6 +14,7 @@ import '../widgets/common.dart';
 import '../widgets/group_avatar.dart';
 import '../widgets/sheet.dart';
 import 'card_import_page.dart';
+import 'support_page.dart';
 import 'ledger_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -175,6 +176,8 @@ class SettingsPage extends StatelessWidget {
             if (UpdateWatcher.of(context)?.enabled ?? false)
               tile('업데이트 확인', onTap: () => UpdateWatcher.of(context)!.check(manual: true)),
             tile('데이터', value: repo.isDemo ? '체험 모드' : '실시간 동기화'),
+            tile('☕ 개발자 후원하기',
+                onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SupportPage()))),
           ]),
         ]),
       ],
