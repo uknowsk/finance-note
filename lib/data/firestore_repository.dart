@@ -338,6 +338,61 @@ class GroupDirectory {
     await _user(uid).set({'groups': FieldValue.arrayRemove([gid])}, SetOptions(merge: true));
   }
 
+  /// 모임 나가기 (총무는 못 나가요: 먼저 총무를 넘기거나 모임을 지워요).
+  /// 명단에 이름은 남고, 내 계정 연결만 풀려요.
+  Future<void> leave(String gid, String uid) async {
+    final acc = await _group(gid).collection('accounts').doc(uid).get();
+    if (acc.data()?['role'] == 'treasurer') {
+      throw StateError('총무는 나갈 수 없어요. 먼저 총무를 넘기거나 모임을 지워 주세요.');
+    }
+    final memberId = acc.data()?['memberId'] as String?;
+    if (memberId != null) {
+      await _group(gid).collection('members').doc(memberId).update({'uid': null});
+    }
+    if (acc.exists) await acc.reference.delete();
+    await _forgetGroup(gid, uid);
+  }
+
+  /// 모임 지우기 (총무·회장). 기록·명단·공지·메시지까지 모두 지워요. 되돌릴 수 없어요.
+  Future<void> deleteGroup(String gid, String uid) async {
+    final g = _group(gid);
+    // 1단계: 내용물. (설정·계정은 마지막까지 남겨야 권한 확인이 돼요)
+    for (final name in const ['transactions', 'meetings', 'notices', 'messages', 'members', 'joinRequests']) {
+      await _deleteAll(g.collection(name));
+    }
+    // 2단계: 설정 + 계정 + 초대코드 + 모임 한 번에
+    final code = (await g.get()).data()?['inviteCode'] as String?;
+    final accounts = await g.collection('accounts').get();
+    final b = _db.batch();
+    for (final d in (await g.collection('config').get()).docs) {
+      b.delete(d.reference);
+    }
+    for (final d in accounts.docs) {
+      b.delete(d.reference);
+    }
+    if (code != null) b.delete(_db.collection('invites').doc(code));
+    b.delete(g);
+    await b.commit();
+    await _forgetGroup(gid, uid);
+  }
+
+  Future<void> _deleteAll(CollectionReference<Map<String, dynamic>> c) async {
+    while (true) {
+      final page = await c.limit(400).get();
+      if (page.docs.isEmpty) return;
+      final b = _db.batch();
+      for (final d in page.docs) {
+        b.delete(d.reference);
+      }
+      await b.commit();
+    }
+  }
+
+  Future<void> _forgetGroup(String gid, String uid) => _user(uid).set({
+        'groups': FieldValue.arrayRemove([gid]),
+        'lastGroup': FieldValue.delete(),
+      }, SetOptions(merge: true));
+
   /// 새 모임 만들기. 만든 사람이 총무가 돼요. 만든 모임 id를 돌려줘요.
   Future<String> create({
     required String uid,

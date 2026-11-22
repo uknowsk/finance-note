@@ -19,6 +19,8 @@ service cloud.firestore {
         && get(/databases/$(db)/documents/groups/$(gid)/config/settings).data.get('presidentId', '') == account(gid).memberId;
     }
     function canManageEvents(gid) { return isTreasurer(gid) || isPresident(gid); }
+    // 모임 지우기: 총무와 회장
+    function canDeleteGroup(gid) { return isTreasurer(gid) || isPresident(gid); }
     // 모임을 막 만든 사람 (같은 묶음 저장 안에서도 확인돼요)
     function isCreator(gid) {
       return signedIn() && getAfter(groupPath(gid)).data.createdBy == request.auth.uid;
@@ -34,7 +36,7 @@ service cloud.firestore {
       allow get: if signedIn();
       allow create: if signedIn()
         && (isCreator(request.resource.data.groupId) || isTreasurer(request.resource.data.groupId));
-      allow delete: if signedIn() && isTreasurer(resource.data.groupId);
+      allow delete: if signedIn() && canDeleteGroup(resource.data.groupId);
     }
 
     match /groups/{gid} {
@@ -45,36 +47,47 @@ service cloud.firestore {
         && request.resource.data.createdBy == resource.data.createdBy
         && (!('logo' in request.resource.data) || request.resource.data.logo == null
             || (request.resource.data.logo is string && request.resource.data.logo.size() < 300000));
+      allow delete: if canDeleteGroup(gid);
 
       match /accounts/{uid} {
         allow read: if signedIn() && (request.auth.uid == uid || isMember(gid));
         // 모임 만든 사람이 처음 한 번 자기 총무 계정을 만들 때
         allow create: if (isCreator(gid) && request.auth.uid == uid && request.resource.data.role == 'treasurer')
           || isTreasurer(gid);
-        allow update, delete: if isTreasurer(gid);
+        allow update: if isTreasurer(gid);
+        // 총무·회장은 모임을 지울 때, 회원은 스스로 나갈 때 (총무는 못 나가요)
+        allow delete: if canDeleteGroup(gid)
+          || (signedIn() && request.auth.uid == uid && resource.data.role != 'treasurer');
       }
 
       match /members/{memberId} {
         // 가입 화면에서 이름을 고르려면 로그인만 해도 명단은 보여야 해요.
         allow read: if signedIn();
         allow write: if isTreasurer(gid);
+        allow delete: if canDeleteGroup(gid);
+        // 모임을 나갈 때 내 이름의 계정 연결만 풀기
+        allow update: if signedIn() && resource.data.uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid'])
+          && request.resource.data.uid == null;
       }
 
       match /joinRequests/{uid} {
         allow create, update: if signedIn() && request.auth.uid == uid;
         allow read: if signedIn() && (request.auth.uid == uid || isTreasurer(gid));
-        allow delete: if signedIn() && (request.auth.uid == uid || isTreasurer(gid));
+        allow delete: if signedIn() && (request.auth.uid == uid || canDeleteGroup(gid));
       }
 
       match /config/{doc} {
         allow read: if isMember(gid);
         allow write: if isTreasurer(gid);
+        allow delete: if canDeleteGroup(gid);
       }
 
       match /transactions/{id} {
         allow read: if isMember(gid);
         allow write: if isTreasurer(gid)
           && (request.resource == null || (request.resource.data.amount is int && request.resource.data.amount >= 0));
+        allow delete: if canDeleteGroup(gid);
       }
 
       match /messages/{id} {
@@ -84,7 +97,7 @@ service cloud.firestore {
           && request.resource.data.pinned == false
           && request.resource.data.text is string
           && request.resource.data.text.size() <= 1000;
-        allow delete: if isMember(gid) && (resource.data.authorUid == request.auth.uid || isTreasurer(gid));
+        allow delete: if isMember(gid) && (resource.data.authorUid == request.auth.uid || canDeleteGroup(gid));
         allow update: if isTreasurer(gid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinned']);
       }
 

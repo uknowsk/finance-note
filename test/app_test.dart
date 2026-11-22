@@ -18,6 +18,8 @@ import 'package:chongmu_note/ui/invite.dart';
 import 'package:chongmu_note/ui/pages/card_import_page.dart';
 import 'package:chongmu_note/ui/sign_in.dart';
 import 'package:chongmu_note/ui/pages/support_page.dart';
+import 'package:chongmu_note/ui/group_exit.dart';
+import 'package:chongmu_note/ui/pages/settings_page.dart';
 import 'package:chongmu_note/ui/format.dart';
 
 void main() {
@@ -778,15 +780,10 @@ void main() {
 
   // ───────── 개발자 후원 ─────────
 
-  testWidgets('설정에서 개발자 후원 화면이 열린다', (tester) async {
+  testWidgets('설정: 후원 받을 곳이 비어 있으면 후원 메뉴가 안 보인다', (tester) async {
     await openTab(tester, '김민준', '설정');
-    await tester.scrollUntilVisible(find.text('☕ 개발자 후원하기'), 200, scrollable: find.byType(Scrollable).first);
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -300));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('☕ 개발자 후원하기'));
-    await tester.pumpAndSettle();
-    expect(find.byType(SupportPage), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(find.text('데이터'), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text('☕ 개발자 후원하기'), SupportInfo.app.isEmpty ? findsNothing : findsOneWidget);
   });
 
   for (final size in const [Size(320, 640), Size(390, 844), Size(844, 390)]) {
@@ -853,5 +850,70 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: SupportPage(info: SupportInfo())));
     expect(find.textContaining('준비하고 있어요'), findsOneWidget);
     expect(find.byKey(const Key('payToss')), findsNothing);
+  });
+
+  // ───────── 모임 나가기 · 지우기 ─────────
+
+  Future<(AppState, List<String>)> openSettingsWithExit(WidgetTester tester, String name) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final calls = <String>[];
+    final state = AppState(DemoRepository(), myMemberId: memberIdOf(name));
+    await tester.pumpWidget(ChongmuNoteApp(
+      useFirebase: false,
+      demoState: state,
+      demoExit: GroupExit(leave: () async => calls.add('leave'), delete: () async => calls.add('delete')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('설정').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('모임 나가기'), 200, scrollable: find.byType(Scrollable).first);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
+    await tester.pumpAndSettle();
+    return (state, calls);
+  }
+
+  testWidgets('총무: 모임 이름을 똑같이 써야 모임을 지울 수 있다', (tester) async {
+    final (s, calls) = await openSettingsWithExit(tester, seedTreasurer);
+    await tester.tap(find.text('모임 지우기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DeleteGroupDialog), findsOneWidget);
+    TextButton go() => tester.widget<TextButton>(find.byKey(const Key('deleteGo')));
+    expect(go().onPressed, isNull);
+    await tester.enterText(find.byKey(const Key('deleteName')), '틀린 이름');
+    await tester.pump();
+    expect(go().onPressed, isNull);
+    await tester.enterText(find.byKey(const Key('deleteName')), s.group!.name);
+    await tester.pump();
+    expect(go().onPressed, isNotNull);
+    await tester.tap(find.byKey(const Key('deleteGo')));
+    await tester.pumpAndSettle();
+    expect(calls, ['delete']);
+  });
+
+  testWidgets('총무가 나가려 하면 총무 넘기기를 먼저 하라고 막는다', (tester) async {
+    final (_, calls) = await openSettingsWithExit(tester, seedTreasurer);
+    await tester.tap(find.text('모임 나가기'));
+    await tester.pumpAndSettle();
+    expect(find.text('총무는 바로 나갈 수 없어요'), findsOneWidget);
+    await tester.tap(find.text('알겠어요'));
+    await tester.pumpAndSettle();
+    expect(calls, isEmpty);
+  });
+
+  testWidgets('회장도 모임을 지울 수 있다', (tester) async {
+    await openSettingsWithExit(tester, seedPresident);
+    expect(find.text('모임 지우기'), findsOneWidget);
+  });
+
+  testWidgets('일반 회원은 나가기만 있고, 확인하면 나간다', (tester) async {
+    final (_, calls) = await openSettingsWithExit(tester, '김민준');
+    expect(find.text('모임 지우기'), findsNothing);
+    await tester.tap(find.text('모임 나가기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인').last);
+    await tester.pumpAndSettle();
+    expect(calls, ['leave']);
   });
 }

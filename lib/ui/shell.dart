@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'group_exit.dart';
 import 'pages/dues_page.dart';
 import 'pages/home_page.dart';
 import 'pages/ledger_page.dart';
@@ -9,12 +10,15 @@ import 'pages/settings_page.dart';
 
 /// 세로 화면: 아래 탭 6개 / 가로·큰 화면: 왼쪽 메뉴.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, this.onSignOut, this.onSwitchGroup});
+  const AppShell({super.key, this.onSignOut, this.onSwitchGroup, this.exit});
 
   final VoidCallback? onSignOut;
 
   /// 내 모임 목록으로 (다른 모임 보기).
   final VoidCallback? onSwitchGroup;
+
+  /// 모임 나가기·지우기
+  final GroupExit? exit;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -43,7 +47,7 @@ class _AppShellState extends State<AppShell> {
         2 => const DuesPage(),
         3 => const MeetingsPage(),
         4 => const NewsPage(),
-        _ => SettingsPage(onSignOut: widget.onSignOut, onSwitchGroup: widget.onSwitchGroup),
+        _ => SettingsPage(onSignOut: widget.onSignOut, onSwitchGroup: widget.onSwitchGroup, exit: widget.exit),
       };
 
   @override
