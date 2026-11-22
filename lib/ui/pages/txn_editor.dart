@@ -68,6 +68,7 @@ class _TxnEditorState extends State<TxnEditor> {
       memberId: _memberId,
       memo: _memo.text.trim().isEmpty ? null : _memo.text.trim(),
       receiptUrl: widget.preset?.receiptUrl,
+      smsKey: widget.preset?.smsKey,
     ));
     HapticFeedback.mediumImpact();
     if (!mounted) return;

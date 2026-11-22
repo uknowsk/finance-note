@@ -158,6 +158,9 @@ class Txn {
   final String? memo;
   final String? receiptUrl;
 
+  /// 카드 문자에서 가져온 기록이면 그 문자 이름표 (같은 문자를 두 번 안 넣게).
+  final String? smsKey;
+
   const Txn({
     required this.id,
     required this.date,
@@ -168,6 +171,7 @@ class Txn {
     this.memberId,
     this.memo,
     this.receiptUrl,
+    this.smsKey,
   });
 
   bool get isIncome => type == TxnType.income;
@@ -182,6 +186,7 @@ class Txn {
         'memberId': memberId,
         'memo': memo,
         'receiptUrl': receiptUrl,
+        if (smsKey != null) 'smsKey': smsKey,
       };
 
   factory Txn.fromMap(String id, Map<String, dynamic> m) => Txn(
@@ -194,6 +199,7 @@ class Txn {
         memberId: m['memberId'] as String?,
         memo: m['memo'] as String?,
         receiptUrl: m['receiptUrl'] as String?,
+        smsKey: m['smsKey'] as String?,
       );
 }
 
@@ -252,6 +258,15 @@ class LedgerSettings {
   final List<String> incomeCategories;
   final List<String> expenseCategories;
 
+  /// 카드 문자로 지출 넣기를 켰는지 (총무 폰에서).
+  final bool smsEnabled;
+
+  /// 가져올 카드 (예: "신한카드", "국민 1234"). 비면 모든 카드.
+  final List<String> cardFilters;
+
+  /// 총무가 "안 넣기"로 넘긴 카드 문자 (최근 것만 기억).
+  final List<String> smsIgnored;
+
   const LedgerSettings({
     required this.openingBalance,
     required this.openingDate,
@@ -262,6 +277,9 @@ class LedgerSettings {
     this.rotation = const [],
     this.incomeCategories = Categories.income,
     this.expenseCategories = Categories.expense,
+    this.smsEnabled = false,
+    this.cardFilters = const [],
+    this.smsIgnored = const [],
   });
 
   bool get usesRotation => rotation.isNotEmpty;
@@ -280,6 +298,9 @@ class LedgerSettings {
     List<String>? rotation,
     List<String>? incomeCategories,
     List<String>? expenseCategories,
+    bool? smsEnabled,
+    List<String>? cardFilters,
+    List<String>? smsIgnored,
   }) =>
       LedgerSettings(
         openingBalance: openingBalance ?? this.openingBalance,
@@ -291,6 +312,9 @@ class LedgerSettings {
         rotation: rotation ?? this.rotation,
         incomeCategories: incomeCategories ?? this.incomeCategories,
         expenseCategories: expenseCategories ?? this.expenseCategories,
+        smsEnabled: smsEnabled ?? this.smsEnabled,
+        cardFilters: cardFilters ?? this.cardFilters,
+        smsIgnored: smsIgnored ?? this.smsIgnored,
       );
 
   Map<String, dynamic> toMap() => {
@@ -303,6 +327,9 @@ class LedgerSettings {
         'rotation': rotation,
         'incomeCategories': incomeCategories,
         'expenseCategories': expenseCategories,
+        'smsEnabled': smsEnabled,
+        'cardFilters': cardFilters,
+        'smsIgnored': smsIgnored,
       };
 
   static List<String> _list(Object? v, List<String> fallback) => switch (v) {
@@ -320,6 +347,9 @@ class LedgerSettings {
         rotation: m['rotation'] is List ? [for (final r in m['rotation'] as List) '$r'] : const [],
         incomeCategories: _list(m['incomeCategories'], Categories.income),
         expenseCategories: _list(m['expenseCategories'], Categories.expense),
+        smsEnabled: m['smsEnabled'] as bool? ?? false,
+        cardFilters: _list(m['cardFilters'], const []),
+        smsIgnored: _list(m['smsIgnored'], const []),
       );
 }
 

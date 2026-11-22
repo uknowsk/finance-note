@@ -150,6 +150,7 @@ class DemoRepository implements LedgerRepository {
       memberId: t.memberId,
       memo: t.memo,
       receiptUrl: t.receiptUrl,
+      smsKey: t.smsKey,
     );
     _txns.value = [..._txns.value.where((x) => x.id != id), saved];
   }

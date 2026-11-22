@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/group_avatar.dart';
 import '../widgets/sheet.dart';
+import 'card_import_page.dart';
 import 'ledger_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -114,6 +115,7 @@ class SettingsPage extends StatelessWidget {
                   onTap: () => showAppSheet(context, (_) => const _MoneyEditor())),
               tile('수입 · 지출 분류',
                   onTap: () => showAppSheet(context, (_) => const _CategoryEditor())),
+              tile('카드 문자로 지출 넣기', onTap: () => openCardImport(context)),
             ]),
           ],
           SectionHeader('회원 명단 · ${s.members.length}명'),

@@ -2,6 +2,8 @@
     <!-- 새 버전 APK를 내려받고 설치 화면을 열려면 필요해요 -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- 총무가 켰을 때만: 카드 승인 문자를 읽어 지출을 자동으로 채워요 (폰 밖으로 보내지 않아요) -->
+    <uses-permission android:name="android.permission.READ_SMS"/>
     <application
         android:label="총무노트"
         android:name="${applicationName}"
