@@ -229,9 +229,12 @@ enum MyGroupStatus { joined, pending, none }
 
 /// 모임 찾기·만들기·가입 신청 (모임 바깥에서 하는 일).
 class GroupDirectory {
-  GroupDirectory({FirebaseFirestore? db}) : _db = db ?? FirebaseFirestore.instance;
+  GroupDirectory({FirebaseFirestore? db}) : _dbOverride = db;
 
-  final FirebaseFirestore _db;
+  final FirebaseFirestore? _dbOverride;
+
+  /// 실제로 쓸 때 연결해요 (화면만 그리는 테스트에선 Firebase 없이도 만들 수 있게).
+  FirebaseFirestore get _db => _dbOverride ?? FirebaseFirestore.instance;
 
   DocumentReference<Map<String, dynamic>> _user(String uid) => _db.collection('users').doc(uid);
   DocumentReference<Map<String, dynamic>> _group(String gid) => _db.collection('groups').doc(gid);

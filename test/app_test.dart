@@ -16,6 +16,7 @@ import 'package:chongmu_note/ui/widgets/common.dart';
 import 'package:chongmu_note/data/firestore_repository.dart';
 import 'package:chongmu_note/ui/invite.dart';
 import 'package:chongmu_note/ui/pages/card_import_page.dart';
+import 'package:chongmu_note/ui/sign_in.dart';
 
 void main() {
   setUpAll(() => initializeDateFormatting('ko_KR'));
@@ -644,4 +645,39 @@ void main() {
     await openTab(tester, '김민준', '홈');
     expect(find.text('카드 문자'), findsNothing);
   });
+
+  // ───────── 초대코드로 들어가기 ─────────
+
+  test('복사한 초대 글에서 코드를 찾는다', () {
+    final msg = inviteMessage(const Group(id: 'g', name: '등산 모임', inviteCode: 'ABC234'));
+    expect(extractInviteCode(msg), 'ABC234');
+    expect(extractInviteCode('  xyz789 '), 'XYZ789');
+    expect(extractInviteCode('초대코드: Q2W3E4 입니다'), 'Q2W3E4');
+    expect(extractInviteCode('오늘 저녁 7시 모여요'), isNull);
+    expect(extractInviteCode(''), isNull);
+  });
+
+  for (final size in [const Size(390, 844), const Size(320, 640), const Size(844, 390)]) {
+    testWidgets('초대코드 화면에 입력칸이 보이고, 복사한 코드가 자동으로 들어간다 $size', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: JoinGroupPage(
+          dir: GroupDirectory(),
+          uid: 'u1',
+          // 실제 서버 대신: 찾기는 실패해도 화면은 그대로여야 해요.
+          readClipboard: () async => '[총무노트] 초대\n초대코드: ABC234',
+        ),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('inviteCode')), findsOneWidget);
+      expect(find.byKey(const Key('findGroup')), findsOneWidget);
+      expect(find.text('ABC234'), findsOneWidget);
+      expect(find.textContaining('자동으로'), findsNothing);
+      expect(find.textContaining('코드를 찾아 넣었어요'), findsOneWidget);
+    });
+  }
 }
